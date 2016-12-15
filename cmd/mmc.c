@@ -271,13 +271,12 @@ static int do_mmc_read(cmd_tbl_t *cmdtp, int flag,
 		       int argc, char * const argv[])
 {
 	struct mmc *mmc;
-	u32 blk, cnt, n;
-	void *addr;
+	u32 blk, cnt, n, addr;
 
 	if (argc != 4)
 		return CMD_RET_USAGE;
 
-	addr = (void *)simple_strtoul(argv[1], NULL, 16);
+	addr = simple_strtoul(argv[1], NULL, 16);
 	blk = simple_strtoul(argv[2], NULL, 16);
 	cnt = simple_strtoul(argv[3], NULL, 16);
 
@@ -285,10 +284,12 @@ static int do_mmc_read(cmd_tbl_t *cmdtp, int flag,
 	if (!mmc)
 		return CMD_RET_FAILURE;
 
+	char buf[cnt * 512];
+
 	printf("\nMMC read: dev # %d, block # %d, count %d ... ",
 	       curr_device, blk, cnt);
 
-	n = blk_dread(mmc_get_blk_desc(mmc), blk, cnt, addr);
+	n = blk_dread(mmc_get_blk_desc(mmc), blk, cnt, buf+addr);
 	/* flush cache after read */
 	flush_cache((ulong)addr, cnt * 512); /* FIXME */
 	printf("%d blocks read: %s\n", n, (n == cnt) ? "OK" : "ERROR");
@@ -299,19 +300,20 @@ static int do_mmc_write(cmd_tbl_t *cmdtp, int flag,
 			int argc, char * const argv[])
 {
 	struct mmc *mmc;
-	u32 blk, cnt, n;
-	void *addr;
+	u32 blk, cnt, n, addr;
 
 	if (argc != 4)
 		return CMD_RET_USAGE;
 
-	addr = (void *)simple_strtoul(argv[1], NULL, 16);
+	addr = simple_strtoul(argv[1], NULL, 16);
 	blk = simple_strtoul(argv[2], NULL, 16);
 	cnt = simple_strtoul(argv[3], NULL, 16);
 
 	mmc = init_mmc_device(curr_device, false);
 	if (!mmc)
 		return CMD_RET_FAILURE;
+
+	char buf[cnt * 512];
 
 	printf("\nMMC write: dev # %d, block # %d, count %d ... ",
 	       curr_device, blk, cnt);
@@ -320,7 +322,7 @@ static int do_mmc_write(cmd_tbl_t *cmdtp, int flag,
 		printf("Error: card is write protected!\n");
 		return CMD_RET_FAILURE;
 	}
-	n = blk_dwrite(mmc_get_blk_desc(mmc), blk, cnt, addr);
+	n = blk_dwrite(mmc_get_blk_desc(mmc), blk, cnt, buf+addr);
 	printf("%d blocks written: %s\n", n, (n == cnt) ? "OK" : "ERROR");
 
 	return (n == cnt) ? CMD_RET_SUCCESS : CMD_RET_FAILURE;
@@ -710,7 +712,7 @@ static int do_mmc_setdsr(cmd_tbl_t *cmdtp, int flag,
 
 	if (argc != 2)
 		return CMD_RET_USAGE;
-	val = simple_strtoul(argv[2], NULL, 16);
+	val = simple_strtoul(argv[1], NULL, 16);
 
 	mmc = find_mmc_device(curr_device);
 	if (!mmc) {

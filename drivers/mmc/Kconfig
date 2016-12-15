@@ -87,6 +87,12 @@ config ZYNQ_SDHCI
 	help
 	  Support for Arasan SDHCI host controller on Zynq/ZynqMP ARM SoCs platform
 
+config MINION_SDHCI
+	bool "Minion SDHCI controller support"
+	depends on DM_MMC && OF_CONTROL
+	help
+	  Support for Minion SDHCI host controller
+
 config ROCKCHIP_SDHCI
 	bool "Arasan SDHCI controller for Rockchip support"
 	depends on DM_MMC && BLK && DM_MMC_OPS
@@ -109,5 +115,11 @@ config SANDBOX_MMC
 	  other than allow sandbox to be build with MMC support. This
 	  improves build coverage for sandbox and makes it easier to detect
 	  MMC build errors with sandbox.
+
+config MMC_TRACE
+	bool "SD/MMC trace support"
+	depends on MMC
+	help
+	  This selects support for SD/MMC trace
 
 endmenu

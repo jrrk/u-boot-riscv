@@ -256,7 +256,7 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = cc
 HOSTCXX      = c++
-HOSTCFLAGS   = -Wall -Wstrict-prototypes -O2 -fomit-frame-pointer \
+HOSTCFLAGS   = -Wall -Wstrict-prototypes \
 		$(if $(CONFIG_TOOLS_DEBUG),-g)
 HOSTCXXFLAGS = -O2
 
@@ -700,6 +700,9 @@ libs-y		:= $(patsubst %/, %/built-in.o, $(libs-y))
 u-boot-init := $(head-y)
 u-boot-main := $(libs-y)
 
+ifeq ($(CONFIG_MINION_SDHCI),y)
+PLATFORM_LIBS +=-L/usr/lib/x86_64-linux-gnu -lstdc++ drivers/mmc/sdcard/obj_dir/sim_main.o drivers/mmc/sdcard/obj_dir/verilated.o drivers/mmc/sdcard/obj_dir/Vusimv_top__ALL.a
+endif
 
 # Add GCC lib
 ifeq ($(CONFIG_USE_PRIVATE_LIBGCC),y)
@@ -1215,6 +1218,7 @@ cmd_smap = \
 		-c $(srctree)/common/system_map.c -o common/system_map.o
 
 u-boot:	$(u-boot-init) $(u-boot-main) u-boot.lds FORCE
+	make -s -C drivers/mmc/sdcard
 	$(call if_changed,u-boot__)
 ifeq ($(CONFIG_KALLSYMS),y)
 	$(call cmd,smap)

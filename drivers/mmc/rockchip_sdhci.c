@@ -15,6 +15,7 @@
 
 /* 400KHz is max freq for card ID etc. Use that as min */
 #define EMMC_MIN_FREQ	400000
+#define CONFIG_ROCKCHIP_SDHCI_MAX_FREQ 50000000
 
 struct rockchip_sdhc_plat {
 	struct mmc_config cfg;

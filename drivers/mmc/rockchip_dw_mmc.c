@@ -14,8 +14,6 @@
 #include <pwrseq.h>
 #include <syscon.h>
 #include <asm/gpio.h>
-#include <asm/arch/clock.h>
-#include <asm/arch/periph.h>
 #include <linux/err.h>
 
 DECLARE_GLOBAL_DATA_PTR;

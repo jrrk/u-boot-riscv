@@ -275,7 +275,9 @@ int board_run_command(const char *cmdline)
 	return 1;
 }
 
-int main(int argc, char *argv[])
+void verilator_main(int argc, char **argv, char **env);
+
+int main(int argc, char *argv[], char *envp[])
 {
 	struct sandbox_state *state;
 	gd_t data;
@@ -305,6 +307,8 @@ int main(int argc, char *argv[])
 
 	/* Do pre- and post-relocation init */
 	board_init_f(0);
+
+	verilator_main(argc, argv, envp);
 
 	board_init_r(gd->new_gd, 0);
 

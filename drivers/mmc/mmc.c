@@ -1783,7 +1783,7 @@ static int mmc_probe(bd_t *bis)
 {
 	return 0;
 }
-#elif defined(CONFIG_DM_MMC)
+#elif defined(CONFIG_DM_MMC) && !defined(CONFIG_MINION_SDHCI)
 static int mmc_probe(bd_t *bis)
 {
 	int ret, i;
