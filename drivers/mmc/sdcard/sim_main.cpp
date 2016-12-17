@@ -57,10 +57,10 @@ void verilator_eval(void)
       cmd_i = top->cmd_i;
       verilator_printf("cmd_i='H%X;\n", cmd_i);
     }
-  if (xmit_i != top->xmit_i)
+  if (timeout_i != top->timeout_i)
     {
-      xmit_i = top->xmit_i;
-      verilator_printf("xmit_i='H%X;\n", xmit_i);
+      timeout_i = top->timeout_i;
+      verilator_printf("timeout_i='H%X;\n", timeout_i);
     }
   if (arg_i != top->arg_i)
     {
@@ -79,14 +79,14 @@ void verilator_main(int argc, char **argv, char **env) {
 		 setting_i = -1;
 		 start_i = -1;
 		 cmd_i = -1;
-		 xmit_i = -1;
+		 timeout_i = -1;
 		 arg_i = -1;
                  top->rst = 1;
                  top->sd_clk = 0;
 		 top->setting_i = 0;
 		 top->start_i = 0;
 		 top->cmd_i = 0;
-		 top->xmit_i = 1;
+		 top->timeout_i = 1;
 		 top->arg_i = 0;
                  verilator_eval();
                  top->sd_clk = 1;
@@ -114,12 +114,12 @@ void verilator_main(int argc, char **argv, char **env) {
                  verilator_eval();
 }
 
-void verilator_loop(unsigned setting, unsigned start, unsigned cmd, unsigned xmit, unsigned arg, unsigned *finish, unsigned *crc_ok, unsigned *index_ok, unsigned response[])
+void verilator_loop(unsigned setting, unsigned start, unsigned cmd, unsigned timeout, unsigned arg, unsigned *finish, unsigned *crc_ok, unsigned *index_ok, unsigned response[])
 {
  top->setting_i = setting;
  top->start_i = start;
  top->cmd_i = cmd;
- top->xmit_i = xmit;
+ top->timeout_i = timeout;
  top->arg_i = arg;
  verilator_eval();
  top->sd_clk = 1;
@@ -134,4 +134,8 @@ void verilator_loop(unsigned setting, unsigned start, unsigned cmd, unsigned xmi
  response[1] = top->response1_o;
  response[2] = top->response2_o;
  response[3] = top->response3_o;
+ response[4] = top->wait_o;
+ response[5] = top->status_o;
+ response[5] = top->packet0_o;
+ response[6] = top->packet1_o;
 }

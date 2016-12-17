@@ -267,50 +267,6 @@ struct minion_sdhci_host {
 	struct mmc_config cfg;
 };
 
-#ifdef CONFIG_MINION_VERBOSE
-const char *nam(int reg)
-{
-  switch (reg)
-    {
-    case MINION_SDHCI_HOST_CONTROL	: return "MINION_SDHCI_HOST_CONTROL	";
-    case MINION_SDHCI_POWER_ON	        : return "MINION_SDHCI_POWER_ON	        ";
-    case MINION_SDHCI_CTRL_4BITBUS	: return "MINION_SDHCI_CTRL_4BITBUS	";
-    case MINION_SDHCI_CTRL_HISPD	: return "MINION_SDHCI_CTRL_HISPD	";
-    case MINION_SDHCI_CTRL_SDMA	        : return "MINION_SDHCI_CTRL_SDMA	";
-    case MINION_SDHCI_BLOCK_COUNT   	: return "MINION_SDHCI_BLOCK_COUNT	";
-    case MINION_SDHCI_ARGUMENT   	: return "MINION_SDHCI_ARGUMENT	        ";
-    case MINION_SDHCI_CTRL_CD_TEST_INS  : return "MINION_SDHCI_CTRL_CD_TEST_INS ";
-    case MINION_SDHCI_CTRL_CD_TEST	: return "MINION_SDHCI_CTRL_CD_TEST	";
-    case MINION_SDHCI_POWER_CONTROL	: return "MINION_SDHCI_POWER_CONTROL	";
-    case MINION_SDHCI_POWER_180	        : return "MINION_SDHCI_POWER_180	";
-    case MINION_SDHCI_POWER_300	        : return "MINION_SDHCI_POWER_300	";
-    case MINION_SDHCI_COMMAND	        : return "MINION_SDHCI_COMMAND	        ";
-    case MINION_SDHCI_BLOCK_GAP_CONTROL	: return "MINION_SDHCI_BLOCK_GAP_CONTROL";
-    case MINION_SDHCI_WAKE_UP_CONTROL	: return "MINION_SDHCI_WAKE_UP_CONTROL	";
-    case MINION_SDHCI_TIMEOUT_CONTROL	: return "MINION_SDHCI_TIMEOUT_CONTROL	";
-    case MINION_SDHCI_SOFTWARE_RESET	: return "MINION_SDHCI_SOFTWARE_RESET	";
-    case MINION_SDHCI_CLOCK_CONTROL	: return "MINION_SDHCI_CLOCK_CONTROL	";
-    case MINION_SDHCI_INT_STATUS	: return "MINION_SDHCI_INT_STATUS	";
-    case MINION_SDHCI_INT_ENABLE	: return "MINION_SDHCI_INT_ENABLE	";
-    case MINION_SDHCI_SIGNAL_ENABLE	: return "MINION_SDHCI_SIGNAL_ENABLE	";
-    case MINION_SDHCI_PRESENT_STATE	: return "MINION_SDHCI_PRESENT_STATE	";
-    case MINION_SDHCI_MAX_CURRENT	: return "MINION_SDHCI_MAX_CURRENT	";
-    case MINION_SDHCI_SET_ACMD12_ERROR	: return "MINION_SDHCI_SET_ACMD12_ERROR ";
-    case MINION_SDHCI_SET_INT_ERROR	: return "MINION_SDHCI_SET_INT_ERROR	";
-    case MINION_SDHCI_ADMA_ERROR	: return "MINION_SDHCI_ADMA_ERROR	";
-    case MINION_SDHCI_ADMA_ADDRESS	: return "MINION_SDHCI_ADMA_ADDRESS	";
-    case MINION_SDHCI_SLOT_INT_STATUS	: return "MINION_SDHCI_SLOT_INT_STATUS	";
-    case MINION_SDHCI_HOST_VERSION	: return "MINION_SDHCI_HOST_VERSION	";
-    case MINION_SDHCI_RESPONSE          : return "MINION_SDHCI_RESPONSE         ";        
-    case MINION_SDHCI_RESPONSE+4        : return "MINION_SDHCI_RESPONSE+4       ";        
-    case MINION_SDHCI_RESPONSE+8        : return "MINION_SDHCI_RESPONSE+8       ";        
-    case MINION_SDHCI_RESPONSE+12       : return "MINION_SDHCI_RESPONSE+12      ";
-    case MINION_SDHCI_BUFFER            : return "MINION_SDHCI_BUFFER           ";
-    default: printf("unknown(%d)", reg); abort();
-    }
-}
-#endif
-
 static int minion_sdhci_host_control;
 static int minion_sdhci_power_on;
 static int minion_sdhci_ctrl_4bitbus;
@@ -376,12 +332,11 @@ static void minion_sdhci_write(struct minion_sdhci_host *host, u32 val, int reg)
 	case MINION_SDHCI_CMD_RESP_SHORT: setting = 1; break;
 	case MINION_SDHCI_CMD_RESP_SHORT_BUSY: setting = 1; resp_busy = 1; break;
 	case MINION_SDHCI_CMD_RESP_LONG: setting = 3; break;
-	default: abort();
 	}
       cmd = val >> 8;
       xmit = 1;
       arg = minion_sdhci_argument;
-      verilator_printf("// s%X,%.2X,%.8X,%X\n", xmit, cmd, arg, setting);
+      verilator_printf("// s%d,%.8X,%X\n", cmd, arg, setting);
       for (i = 4; i--; ) verilator_loop(setting, start, cmd, xmit, arg, &finish, &crc_ok, &index_ok, response);
       start = 1;
       do
@@ -411,7 +366,7 @@ static void minion_sdhci_write(struct minion_sdhci_host *host, u32 val, int reg)
     case MINION_SDHCI_SLOT_INT_STATUS	: minion_sdhci_slot_int = val; break;
     case MINION_SDHCI_HOST_VERSION	: minion_sdhci_host_version = val; break;
     case MINION_SDHCI_BLOCK_COUNT   	: minion_sdhci_block_count = val; break;
-    default: printf("unknown(%d)", reg); abort();
+    default: printf("unknown(%d)", reg);
     }
 }
 
@@ -435,7 +390,7 @@ static u32 minion_sdhci_read(struct minion_sdhci_host *host, int reg)
     case MINION_SDHCI_HOST_CONTROL: return minion_sdhci_host_control;
     case MINION_SDHCI_CLOCK_CONTROL: return minion_sdhci_clock_control|MINION_SDHCI_CLOCK_INT_STABLE;
     case MINION_SDHCI_BUFFER : return 0;
-    default: printf("unknown(%d)", reg); abort();
+    default: printf("unknown(%d)", reg);
     }
   return 0;
 }
@@ -561,7 +516,6 @@ static int minion_sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 	struct minion_sdhci_host *host = mmc->priv;
 	unsigned int stat = 0;
 	int ret = 0;
-	int trans_bytes = 0;
 	u32 mask, flags, mode;
 	unsigned int time = 0, start_addr = 0;
 	int mmc_dev = mmc_get_blk_desc(mmc)->devnum;
@@ -609,7 +563,6 @@ static int minion_sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 	    flags = MINION_SDHCI_CMD_RESP_SHORT_BUSY; break;
 	  default:
 	    flags = 0;
-	    abort();
 	  }
 
 	if (cmd->resp_type & MMC_RSP_CRC)
@@ -648,10 +601,6 @@ static int minion_sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 	}
 
 	minion_sdhci_write(host, cmd->cmdarg, MINION_SDHCI_ARGUMENT);
-#ifdef CONFIG_MMC_SDMA
-	trans_bytes = ALIGN(trans_bytes, CONFIG_SYS_CACHELINE_SIZE);
-	flush_cache(start_addr, trans_bytes);
-#endif
 	minion_sdhci_write(host, MINION_SDHCI_MAKE_CMD(cmd->cmdidx, flags), MINION_SDHCI_COMMAND);
 	start = get_timer(0);
 	do {
