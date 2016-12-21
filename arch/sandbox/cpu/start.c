@@ -275,8 +275,6 @@ int board_run_command(const char *cmdline)
 	return 1;
 }
 
-void verilator_main(int argc, char **argv, char **env);
-
 int main(int argc, char *argv[], char *envp[])
 {
 	struct sandbox_state *state;
@@ -308,7 +306,9 @@ int main(int argc, char *argv[], char *envp[])
 	/* Do pre- and post-relocation init */
 	board_init_f(0);
 
+#ifdef CONFIG_MINION_SDHCI
 	verilator_main(argc, argv, envp);
+#endif
 
 	board_init_r(gd->new_gd, 0);
 

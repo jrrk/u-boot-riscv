@@ -98,10 +98,10 @@ module usimv_top(
    wire 	    rx_full = 0;
    wire 	    rx_empty = 0;
   
-   assign sd_status = {1'b0,crc_val_o[6:0],
+   assign status_o = {1'b0,crc_val_o[6:0],
 		       1'b0,crc_actual_o[6:0],
 		       7'b0,finish_o,
-		       index_ok_o,sd_cmd_crc_ok_o,data_crc_ok,sd_busy,
+		       index_ok_o,crc_ok_o,data_crc_ok,sd_busy,
 		       tx_full,tx_empty,rx_full,rx_empty};
 	    
 always @(posedge sd_clk)

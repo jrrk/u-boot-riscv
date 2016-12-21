@@ -57,6 +57,7 @@ obj-$(CONFIG_TEGRA_MMC) += tegra_mmc.o
 obj-$(CONFIG_MMC_UNIPHIER) += uniphier-sd.o
 obj-$(CONFIG_ZYNQ_SDHCI) += zynq_sdhci.o
 obj-$(CONFIG_MINION_SDHCI) += minion_sdhci.o
+obj-$(CONFIG_MINION_UART) += minion_uart.o minion_helper.o
 obj-$(CONFIG_ROCKCHIP_SDHCI) += rockchip_sdhci.o
 
 ifdef CONFIG_SPL_BUILD

@@ -6,7 +6,7 @@
 
 static Vusimv_top *top;
 static int tb;
-static unsigned rst, sd_clk, setting_i, start_i, cmd_i, xmit_i, arg_i;
+static unsigned rst, sd_clk, setting_i, start_i, cmd_i, arg_i, timeout_i;
 
 void verilator_printf(const char *fmt, ...)
 {

@@ -93,6 +93,12 @@ config MINION_SDHCI
 	help
 	  Support for Minion SDHCI host controller
 
+config MINION_UART
+	bool "Minion UART controller support"
+	depends on DM_MMC && OF_CONTROL
+	help
+	  Support for Minion UART host controller
+
 config ROCKCHIP_SDHCI
 	bool "Arasan SDHCI controller for Rockchip support"
 	depends on DM_MMC && BLK && DM_MMC_OPS
