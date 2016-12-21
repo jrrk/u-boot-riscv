@@ -26,6 +26,7 @@
 void open_handle(void);
 int fionread(unsigned *cmd, unsigned *arg, unsigned *len, unsigned *resp);
 void uart_printf(const char *fmt, ...);
+volatile unsigned int * const sd_base = (volatile unsigned int*)(6<<20);
 
 /*
  * Controller registers
@@ -303,6 +304,7 @@ static unsigned resp_busy, setting, response[8];
 
 static void minion_uart_write(struct minion_uart_host *host, u32 val, int reg)
 {  
+  unsigned addr, data, len, tmp_resp[8];
   switch (reg)
     {
     case MINION_UART_HOST_CONTROL	: minion_uart_host_control = val; break;
@@ -334,8 +336,16 @@ static void minion_uart_write(struct minion_uart_host *host, u32 val, int reg)
       break;
     case MINION_UART_BLOCK_GAP_CONTROL	: minion_uart_block_gap = val; break;
     case MINION_UART_WAKE_UP_CONTROL	: minion_uart_wake_up = val; break;
-    case MINION_UART_TIMEOUT_CONTROL	: minion_uart_timeout_control = val; break;
-    case MINION_UART_SOFTWARE_RESET	: minion_uart_software_reset = val; break;
+    case MINION_UART_TIMEOUT_CONTROL	:
+      uart_printf("w%.6X,%.8X\r", sd_base+9, val);
+      while (fionread(&addr, &data, &len, tmp_resp) < 2);
+      minion_uart_timeout_control = val; 
+      break;
+    case MINION_UART_SOFTWARE_RESET	:
+      minion_uart_software_reset = val;
+      minion_uart_timeout_control = 1000; 
+      open_handle();
+      break;
     case MINION_UART_CLOCK_CONTROL	: minion_uart_clock_control = val; break;
     case MINION_UART_INT_STATUS	: minion_uart_int_status = val; break;
     case MINION_UART_INT_ENABLE	: minion_uart_int_enable = val; break;
@@ -370,16 +380,14 @@ static u32 minion_uart_read(struct minion_uart_host *host, int reg)
 	  assert(cmd==minion_uart_command);
 	  assert(arg==minion_uart_argument);
 	  assert(len==setting);
-	  return response[4] < 1000 ? MINION_UART_INT_RESPONSE|MINION_UART_INT_DATA_AVAIL : MINION_UART_INT_ERROR;
+	  return response[4] < minion_uart_timeout_control ? MINION_UART_INT_RESPONSE|MINION_UART_INT_DATA_AVAIL : MINION_UART_INT_ERROR;
 	}
       return 0;
     case MINION_UART_INT_ENABLE	: return minion_uart_int_enable;
     case MINION_UART_PRESENT_STATE	: return MINION_UART_DATA_AVAILABLE;
     case MINION_UART_HOST_VERSION	: return minion_uart_host_version;
-    case MINION_UART_CAPABILITIES      : return MINION_UART_CAN_VDD_330;
-    case MINION_UART_SOFTWARE_RESET :
-      open_handle();
-      return 0;
+    case MINION_UART_CAPABILITIES       : return MINION_UART_CAN_VDD_330;
+    case MINION_UART_SOFTWARE_RESET     : return 0;
     case MINION_UART_HOST_CONTROL: return minion_uart_host_control;
     case MINION_UART_CLOCK_CONTROL: return minion_uart_clock_control|MINION_UART_CLOCK_INT_STABLE;
     case MINION_UART_BUFFER : return 0;

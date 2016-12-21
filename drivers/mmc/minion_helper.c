@@ -4,11 +4,13 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #else
+
+typedef long int ssize_t;
 typedef unsigned char cc_t;
 typedef unsigned int speed_t;
 typedef unsigned int tcflag_t;
 typedef long unsigned int size_t;
-typedef long int ssize_t;
+typedef unsigned int useconds_t;
 
 struct termios
   {
@@ -21,12 +23,14 @@ struct termios
     speed_t c_ispeed;
     speed_t c_ospeed;
   };
+
 #endif
 #include <stdarg.h>
 
 /* this section is a hack to prevent conflicts between u-boot and system symbols */
 
 void exit(int status);
+int strcmp(const char *s1, const char *s2);
 int open(const char *pathname, int flags, ...);
 ssize_t write(int fd, const void *buf, size_t count);
 ssize_t read(int fd, void *buf, size_t count);
@@ -35,13 +39,14 @@ int close(int fd);
 void perror(const char *s);
 int sscanf(const char *str, const char *format, ...);
 int tcdrain(int fd);
+int tcflush(int fd, int queue_selector);
 int tcgetattr(int fd, struct termios *termios_p);
 void cfmakeraw(struct termios *termios_p);
 int cfsetispeed(struct termios *termios_p, speed_t speed);
 int cfsetospeed(struct termios *termios_p, speed_t speed);
 int tcsetattr(int fd, int optional_actions, const struct termios *termios_p);
 int vsnprintf (char * __s, size_t maxlen, const char *format, __gnuc_va_list __arg);
-
+int usleep(useconds_t usec);
 
 #define O_RDONLY            00
 #define O_WRONLY            01
@@ -49,8 +54,9 @@ int vsnprintf (char * __s, size_t maxlen, const char *format, __gnuc_va_list __a
 #define O_CREAT           0100 /* Not fcntl.  */
 #define O_TRUNC          01000 /* Not fcntl.  */
 
-#define B115200  0010002
-#define FIONREAD 0x541B
+#define B115200   0010002
+#define FIONREAD   0x541B
+#define TCIOFLUSH       2
 
 static int uart_handle, log_handle, bufptr;
 static char readbuf[999];
@@ -67,27 +73,37 @@ void myperror(const char *s)
 
 int fionread(unsigned *cmd, unsigned *arg, unsigned *len, unsigned *resp)
 {
-  int cnt, maxcnt = sizeof(readbuf) - bufptr;
-  int rslt = ioctl(uart_handle, FIONREAD, &cnt);
+  int rslt, cnt, maxcnt = sizeof(readbuf) - bufptr;
+  usleep(10000);
+  rslt = ioctl(uart_handle, FIONREAD, &cnt);
   if (rslt < 0)
     {
       perror("uart ioctl error");
       myexit(1);
     }
   if (cnt > maxcnt) cnt = maxcnt;
-  rslt = read(uart_handle, readbuf+bufptr, cnt);
-  if (rslt < 0)
+  if (cnt > 0)
     {
-      perror("uart read error");
-      myexit(1);
+      rslt = read(uart_handle, readbuf+bufptr, cnt);
+      if (rslt < 0)
+	{
+	  perror("uart read error");
+	  myexit(1);
+	}
+      if (cnt > rslt) cnt = rslt;
     }
-  if (cnt > rslt) cnt = rslt;
-  write(log_handle, readbuf+bufptr, cnt);
+  if (cnt > 0) write(log_handle, readbuf+bufptr, cnt);
   bufptr += cnt;
   readbuf[bufptr] = 0;
   rslt = sscanf(readbuf, "\ns %X,%X,%X=%X,%X,%X,%X,%X,%X\r\n%X:%X\n", cmd, arg, len, resp+3, resp+2, resp+1, resp+0, resp+5, resp+4, resp+7, resp+6);
   if (rslt == 11)
     return 11;
+  rslt = sscanf(readbuf, "\nw %X,%X\n", cmd, arg);
+  if (rslt == 2)
+    return 2;
+  rslt = !strcmp(readbuf, "\nE\n");
+  if (rslt == 1)
+    return 1;
   return 0;
 }
 
@@ -108,6 +124,7 @@ void open_handle(void)
       perror("uart device error");
       myexit(1);
     }
+  tcflush(uart_handle, TCIOFLUSH);
   rslt = tcgetattr(uart_handle, &oldt);
   if (rslt)
     {
