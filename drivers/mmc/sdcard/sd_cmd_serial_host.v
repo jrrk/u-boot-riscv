@@ -230,6 +230,7 @@ begin: FSM_OUT
        cmd_dat_reg <= 0;
        packet_o <= 0;
        start_data_o <= 0;
+       wait_reg_o <= 0;
     end
     else begin
        case(state)
