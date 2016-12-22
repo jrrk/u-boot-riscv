@@ -64,35 +64,49 @@
 
  reg 		    sd_clk;
  reg 		    rst;
- reg [1:0] 	    setting_i;
+ reg [2:0] 	    setting_i;
  reg 		    start_i;
  reg [31:0] 	    arg_i;
  reg [5:0] 	    cmd_i;
- reg 		    xmit_i;
+ reg [31:0]	    timeout_i;
+ reg [1:0] 	    sd_data_start_i;
+ reg [1:0] 	    sd_align_i;
+ reg [15:0] 	    sd_blkcnt_i;
+ reg [11:0] 	    sd_blksize_i;
+ reg [31:0] 	    sd_data_i;
 //---------------Output ports---------------
  wire     [31:0]  response0_o;
  wire     [63:32] response1_o;
  wire     [95:64] response2_o;
  wire    [127:96] response3_o;
- wire     	    finish_o;
+ wire     	    finish_cmd_o;
+ wire     	    finish_data_o;
  wire     	    crc_ok_o;
  wire     	    index_ok_o;
-
+ wire [15:0] 	    transf_cnt_o;
+ 	    
 usimv_top dut(
     .sd_clk     (sd_clk),
     .rst        (rst),
     .setting_i  (setting_i),
-    .xmit_i     (xmit_i),
+    .timeout_i  (timeout_i),
     .cmd_i      (cmd_i),
     .arg_i      (arg_i),
     .start_i    (start_i),
-    .finish_o   (finish_o),
+    .sd_data_start_i(sd_data_start_i),
+    .sd_align_i(sd_align_i),
+    .sd_blkcnt_i(sd_blkcnt_i),
+    .sd_blksize_i(sd_blksize_i),
+    .sd_data_i(sd_data_i),
+    .finish_cmd_o(finish_cmd_o),
+    .finish_data_o(finish_data_o),
     .response0_o(response0_o),
     .response1_o(response1_o),
     .response2_o(response2_o),
     .response3_o(response3_o),
     .crc_ok_o   (crc_ok_o),
-    .index_ok_o (index_ok_o)
+    .index_ok_o (index_ok_o),
+    .transf_cnt_o(transf_cnt_o)
     );
 
 initial

@@ -60,39 +60,51 @@
 `default_nettype none
 
 module usimv_top(
- input 		    sd_clk,
- input 		    rst,
- input [1:0] 	    setting_i,
- input 		    start_i,
- input [31:0] 	    arg_i,
- input [5:0] 	    cmd_i,
- input [31:0] 	    timeout_i,
+ input 		 sd_clk,
+ input 		 rst,
+ input [2:0] 	 setting_i,
+ input 		 start_i,
+ input [31:0] 	 arg_i,
+ input [5:0] 	 cmd_i,
+ input [31:0] 	 timeout_i,
+ input [1:0] 	 sd_data_start_i,
+ input [1:0] 	 sd_align_i,
+ input [15:0] 	 sd_blkcnt_i,
+ input [11:0] 	 sd_blksize_i,
+ input [31:0] 	 sd_data_i,
 //---------------Output ports---------------
- output     [31:0]  response0_o,
- output     [63:32] response1_o,
- output     [95:64] response2_o,
- output    [126:96] response3_o,
- output      [31:0] wait_o,
- output      [31:0] status_o,
- output      [31:0] packet0_o,
- output      [15:0] packet1_o,
- output      [6:0]  crc_val_o,
- output      [6:0]  crc_actual_o,
- output     	    finish_o,
- output     	    crc_ok_o,
- output     	    index_ok_o);
+ output [31:0] 	 response0_o,
+ output [63:32]  response1_o,
+ output [95:64]  response2_o,
+ output [126:96] response3_o,
+ output [31:0] 	 wait_o,
+ output [31:0] 	 wait_data_o,
+ output [31:0] 	 status_o,
+ output [31:0] 	 packet0_o,
+ output [15:0] 	 packet1_o,
+ output [6:0] 	 crc_val_o,
+ output [6:0] 	 crc_actual_o,
+ output 	 finish_cmd_o,
+ output 	 finish_data_o,
+ output 	 crc_ok_o,
+ output 	 index_ok_o,
+ output 	 sd_rd_o,
+ output 	 sd_we_o,
+ output [31:0] 	 sd_data_o,
+ output [15:0] 	 transf_cnt_o);
 
    wire [3:0] 	    sd_dat_to_mem;
    wire [3:0] 	    sd_dat_to_host;
    wire 	    sd_cmd_to_mem;
    wire 	    sd_cmd_to_host;
-   wire 	    sd_cmd_oe;
+   wire 	    sd_cmd_oe, sd_dat_oe;
 
    reg 		    sd_cmd_to_host_dly;
    reg [3:0] 	    sd_dat_to_host_dly;
-
-   wire 	    data_crc_ok = 0;
-   wire 	    sd_busy = 0;
+		    
+   wire		    start_data;
+   wire 	    data_crc_ok;
+   wire 	    sd_busy, sd_data_busy;
    wire 	    tx_full = 0;
    wire 	    tx_empty = 0;
    wire 	    rx_full = 0;
@@ -100,7 +112,7 @@ module usimv_top(
   
    assign status_o = {1'b0,crc_val_o[6:0],
 		       1'b0,crc_actual_o[6:0],
-		       7'b0,finish_o,
+		       5'b0,finish_data_o,sd_data_busy,finish_cmd_o,
 		       index_ok_o,crc_ok_o,data_crc_ok,sd_busy,
 		       tx_full,tx_empty,rx_full,rx_empty};
 	    
@@ -117,20 +129,44 @@ sd_cmd_serial_host cmd_serial_host0(
     .cmd_i      ({cmd_i,arg_i}),
     .start_i    (start_i),
     .timeout_i  (timeout_i),
-    .finish_o   (finish_o),
+    .finish_o   (finish_cmd_o),
     .response_o ({response3_o,response2_o,response1_o,response0_o,crc_actual_o}),
     .crc_ok_o   (crc_ok_o),
     .crc_val_o  (crc_val_o),
     .packet_o	({packet1_o,packet0_o}),
     .index_ok_o (index_ok_o),
-    .wait_reg_o (wait_o),			    
+    .wait_reg_o (wait_o),
+    .start_data_o(start_data),				    
     .cmd_dat_i  (sd_cmd_to_host_dly),
     .cmd_out_o  (sd_cmd_to_mem),
     .cmd_oe_o   (sd_cmd_oe)
     );
- 
-sd_verilator_model #(.ramdisk("dummy.mem"), .log_file("sdmodel.log"))
-   sdflash1 (
+
+sd_data_serial_host data_serial_host0(
+    .sd_clk         (sd_clk),
+    .rst            (rst),
+    .data_in        (sd_data_i),
+    .rd             (sd_rd_o),
+    .data_out       (sd_data_o),
+    .we             (sd_we_o),
+    .finish_o       (finish_data_o),
+    .DAT_oe_o       (sd_dat_oe),
+    .DAT_dat_o      (sd_dat_to_mem),
+    .DAT_dat_i      (sd_dat_to_host_dly),
+    .blksize        (sd_blksize_i),
+    .bus_4bit       (1'b1),
+    .blkcnt         (sd_blkcnt_i),
+    .start          (start_data ? sd_data_start_i : 2'b00),
+    .byte_alignment (sd_align_i),
+    .timeout_i      (timeout_i),
+    .sd_data_busy   (sd_data_busy),
+    .busy           (sd_busy),
+    .wait_reg_o     (wait_data_o),
+    .crc_ok         (data_crc_ok),
+    .transf_cnt_o   (transf_cnt_o)				      
+    );
+
+sd_verilator_model sdflash1 (
              .sdClk(~sd_clk),
              .cmd(sd_cmd_to_mem),
              .cmdOut(sd_cmd_to_host),

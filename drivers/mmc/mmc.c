@@ -1582,7 +1582,7 @@ static int mmc_startup(struct mmc *mmc)
 	bdesc->product[0] = 0;
 	bdesc->revision[0] = 0;
 #endif
-#if !defined(CONFIG_SPL_BUILD) || defined(CONFIG_SPL_LIBDISK_SUPPORT)
+#if !defined(CONFIG_MINION_SDHCI) || defined(CONFIG_SPL_LIBDISK_SUPPORT)
 	part_init(bdesc);
 #endif
 

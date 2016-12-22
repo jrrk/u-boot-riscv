@@ -61,9 +61,7 @@
 
 // verilator lint_off MULTIDRIVEN
 
-module sd_verilator_model
-#(parameter ramdisk="",
-  parameter log_file="") (
+module sd_verilator_model(
   input 	   sdClk,
   input  	   cmd,
   output reg 	   cmdOut,
@@ -96,6 +94,7 @@ reg crcRst;
 reg [31:0] CardStatus;
 reg [15:0] RCA;
 reg [31:0] OCR;
+reg [31:0] SCR;
 reg [119:0] CID;
 reg [119:0] CSD;
 reg Busy; //0 when busy
@@ -104,6 +103,7 @@ reg [4:0] crc_c;
 
 `define RCASTART 16'h2000
 `define OCRSTART 32'hff8000
+`define SCRSTART 32'h00000000
 `define STATUSSTART 32'h0
 `define CIDSTART 120'h1b534d534d49202010025166450082  //Just some random data not really usefull anyway 
 `define CSDSTART 120'hadaeeeddddddddaaaaaaaa12345678 
@@ -174,14 +174,9 @@ reg appendCrc;
 reg [5:0] startUppCnt;
 
 reg q_start_bit;
-//Card initinCMd
-initial $readmemh(ramdisk,FLASHmem);
 
-//integer k;
-//initial begin
-//	$display("Contents of Mem after reading data file:");
-//	for (k=0; k<512; k=k+1) $display("%d:%h",k,FLASHmem[k]);
-//end
+integer k;
+   
 reg qCmd; 
 reg [2:0] crcCnt;
 
@@ -190,6 +185,8 @@ reg add_wrong_cmd_indx;
 reg add_wrong_data_crc;
 
 initial begin 
+  for (k=0; k<`MEMSIZE; k=k+4)
+       {FLASHmem[k+3],FLASHmem[k+2],FLASHmem[k+1],FLASHmem[k]} = $random();
   add_wrong_data_crc=0;
   add_wrong_cmd_indx=0;
   add_wrong_cmd_crc=0;
@@ -230,6 +227,7 @@ initial begin
   CardStatus = `STATUSSTART;
   CID=`CIDSTART;
   CSD=`CSDSTART;
+  SCR=`SCRSTART;
   response_CMD=0;
   outDelayCnt=0;
   crcDat_rst=1;
@@ -366,7 +364,7 @@ else
   CardStatus[8]<=1;
      
  startUppCnt<=startUppCnt+1;
- OCR[31]<=~Busy;
+ OCR[31]<=Busy;
  if (startUppCnt == `TIME_BUSY)
    Busy <=1;   
  qCmd<=cmd;
@@ -428,6 +426,7 @@ else
         8 : response_S <= 0;
         9 : response_S <= 136;
         12 : response_S <= 48;
+        13 : response_S <= 48;
         14 : response_S <= 0;
         16 : response_S <= 48;
         17 : response_S <= 48;
@@ -437,6 +436,7 @@ else
         33 : response_S <= 48;
         55 : response_S <= 48;
         41 : response_S <= 48;        
+        51 : response_S <= 48;        
     endcase
          case(inCmd[45:40])
        0 : begin 
@@ -472,6 +472,7 @@ else
 	   appendCrc<=0;
 	   RCA<= `RCASTART;
 	   OCR<= `OCRSTART;
+	   SCR<= `SCRSTART;
 	   CardStatus <= `STATUSSTART;
 	   CID<=`CIDSTART;
 	   CSD<=`CSDSTART;
@@ -556,11 +557,17 @@ else
         CardStatus[12:9] <=2;
         end
 		
-		  12: begin
+	12: begin
           response_CMD[127:96] <= CardStatus ;         
           stop<=1;
-		  mult_write <= 0; 
+	  mult_write <= 0; 
           mult_read <=0; 
+         CardStatus[12:9] <= `TRAN;
+        end 
+		
+	13: begin
+          response_CMD[127:96] <= CardStatus ;         
+	  mult_write <= 0; 
          CardStatus[12:9] <= `TRAN;
         end 
 
@@ -665,7 +672,7 @@ else
         begin  
          if (cardIdentificationState) begin
             if (lastCMD != 55 && outDelayCnt==0) begin
-               $display( "**Error in sequnce, CMD 55 should precede 41 in Startup state") ;
+               $display( "**Error in sequence, CMD 55 should precede 41 in Startup state") ;
                CardStatus[3]<=1;
             end
             else begin
@@ -676,7 +683,18 @@ else
             if (Busy==1)
               CardStatus[12:9] <=1;
            end 
-        end    
+        end  
+	end
+        51 : 
+        begin  
+            if (lastCMD != 55 && outDelayCnt==0) begin
+               $display( "**Error in sequence, CMD 55 should precede 51") ;
+            end
+            else begin
+             responseType=3; 
+             response_CMD[127:96] <= SCR;   
+             appendCrc<=1;
+           end 
        end   
         default:
 	  ;

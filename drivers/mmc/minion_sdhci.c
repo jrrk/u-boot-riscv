@@ -24,8 +24,6 @@
 #include <mmc.h>
 #include "sdcard/sim_main.h"
 
-void verilator_printf(const char *fmt, ...);
-
 /*
  * Controller registers
  */
@@ -33,7 +31,6 @@ void verilator_printf(const char *fmt, ...);
 #define MINION_SDHCI_DMA_ADDRESS	0x00
 
 #define MINION_SDHCI_BLOCK_SIZE	0x04
-#define  MINION_SDHCI_MAKE_BLKSZ(dma, blksz) (((dma & 0x7) << 12) | (blksz & 0xFFF))
 
 #define MINION_SDHCI_BLOCK_COUNT	0x06
 
@@ -216,19 +213,6 @@ void verilator_printf(const char *fmt, ...);
 #define MINION_SDHCI_MAX_DIV_SPEC_200	256
 #define MINION_SDHCI_MAX_DIV_SPEC_300	2046
 
-/*
- * quirks
- */
-#define MINION_SDHCI_QUIRK_32BIT_DMA_ADDR	(1 << 0)
-#define MINION_SDHCI_QUIRK_REG32_RW		(1 << 1)
-#define MINION_SDHCI_QUIRK_BROKEN_R1B		(1 << 2)
-#define MINION_SDHCI_QUIRK_NO_HISPD_BIT	(1 << 3)
-#define MINION_SDHCI_QUIRK_BROKEN_VOLTAGE	(1 << 4)
-#define MINION_SDHCI_QUIRK_NO_CD		(1 << 5)
-#define MINION_SDHCI_QUIRK_WAIT_SEND_CMD	(1 << 6)
-#define MINION_SDHCI_QUIRK_NO_SIMULT_VDD_AND_POWER (1 << 7)
-#define MINION_SDHCI_QUIRK_USE_WIDE8		(1 << 8)
-
 /* to make gcc happy */
 struct minion_sdhci_host;
 
@@ -250,7 +234,6 @@ struct minion_sdhci_ops {
 
 struct minion_sdhci_host {
 	const char *name;
-	void *ioaddr;
 	unsigned int quirks;
 	unsigned int host_caps;
 	unsigned int version;
@@ -263,16 +246,14 @@ struct minion_sdhci_host {
 	void (*set_control_reg)(struct minion_sdhci_host *host);
 	void (*set_clock)(int dev_index, unsigned int div);
 	uint	voltages;
-
 	struct mmc_config cfg;
+        const char *start_addr;
 };
 
 static int minion_sdhci_host_control;
 static int minion_sdhci_power_on;
 static int minion_sdhci_ctrl_4bitbus;
-static int minion_sdhci_ctrl_hispd;
 static int minion_sdhci_ctrl_dma;
-static int minion_sdhci_ctrl_sdma;
 static int minion_sdhci_argument;
 static int minion_sdhci_ctrl_adma32;
 static int minion_sdhci_ctrl_8bitbus;
@@ -280,7 +261,6 @@ static int minion_sdhci_ctrl_cd;
 static int minion_sdhci_ctrl_cd;
 static int minion_sdhci_power_control;
 static int minion_sdhci_power_180;
-static int minion_sdhci_power_300;
 static int minion_sdhci_block_gap;
 static int minion_sdhci_wake_up;
 static int minion_sdhci_timeout_control;
@@ -293,66 +273,78 @@ static int minion_sdhci_present_state;
 static int minion_sdhci_max_current;
 static int minion_sdhci_set_acmd12;
 static int minion_sdhci_set_int;
-static int minion_sdhci_adma_error;
-static int minion_sdhci_adma_address;
 static int minion_sdhci_slot_int;
 static int minion_sdhci_host_version;
 static int minion_sdhci_block_count;
-static unsigned resp_busy, setting, start, cmd, xmit, arg, finish, crc_ok, index_ok, response[4];
-
-void verilator_loop(unsigned setting, unsigned start, unsigned cmd, unsigned xmit, unsigned arg, unsigned *finish, unsigned *crc_ok, unsigned *index_ok, unsigned response[]);
+static int minion_sdhci_transfer_mode;
+static int minion_sdhci_block_size;
+static unsigned setting, start, data_start, blkcnt, blksiz, align, cmd, timeout, arg, transf_cnt;
+static unsigned finish_cmd, finish_data, crc_ok, index_ok, *read_buf, *write_buf, response[8];
 
 static void minion_sdhci_write(struct minion_sdhci_host *host, u32 val, int reg)
 {  
   int i;
-#ifdef CONFIG_MINION_VERBOSE
-  printf("write(%X, host->ioaddr + %s);\n", val, nam(reg));
-#endif
   switch (reg)
     {
+    case MINION_SDHCI_BLOCK_COUNT	: minion_sdhci_block_count = val; break;
+    case MINION_SDHCI_BLOCK_SIZE	: minion_sdhci_block_size = val; break;
     case MINION_SDHCI_HOST_CONTROL	: minion_sdhci_host_control = val; break;
     case MINION_SDHCI_POWER_ON	        : minion_sdhci_power_on = val; break;
     case MINION_SDHCI_CTRL_4BITBUS	: minion_sdhci_ctrl_4bitbus = val; break;
-    case MINION_SDHCI_CTRL_HISPD	: minion_sdhci_ctrl_hispd = val; break;
     case MINION_SDHCI_CTRL_DMA_MASK	: minion_sdhci_ctrl_dma = val; break;
-    case MINION_SDHCI_CTRL_SDMA	        : minion_sdhci_ctrl_sdma = val; break;
-    case MINION_SDHCI_ARGUMENT	: minion_sdhci_argument = val; break;
+    case MINION_SDHCI_ARGUMENT	        : minion_sdhci_argument = val; break;
+    case MINION_SDHCI_TRANSFER_MODE	: minion_sdhci_transfer_mode = val; break;
+
     case MINION_SDHCI_CTRL_ADMA32	: minion_sdhci_ctrl_adma32 = val; break;
     case MINION_SDHCI_CTRL_8BITBUS	: minion_sdhci_ctrl_8bitbus = val; break;
     case MINION_SDHCI_CTRL_CD_TEST_INS  : minion_sdhci_ctrl_cd = val; break;
     case MINION_SDHCI_CTRL_CD_TEST	: minion_sdhci_ctrl_cd = val; break;
     case MINION_SDHCI_POWER_CONTROL	: minion_sdhci_power_control = val; break;
     case MINION_SDHCI_POWER_180	        : minion_sdhci_power_180 = val; break;
-    case MINION_SDHCI_POWER_300	        : minion_sdhci_power_300 = val; break;
     case MINION_SDHCI_COMMAND	        :
-      resp_busy = 0;
       switch(val & MINION_SDHCI_CMD_RESP_MASK)
 	{
 	case MINION_SDHCI_CMD_RESP_NONE: setting = 0; break;
 	case MINION_SDHCI_CMD_RESP_SHORT: setting = 1; break;
-	case MINION_SDHCI_CMD_RESP_SHORT_BUSY: setting = 1; resp_busy = 1; break;
+	case MINION_SDHCI_CMD_RESP_SHORT_BUSY: setting = 1; break;
 	case MINION_SDHCI_CMD_RESP_LONG: setting = 3; break;
 	}
+      if (minion_sdhci_transfer_mode & MINION_SDHCI_TRNS_READ)
+	{
+	  setting |= 4;
+	  data_start = 2;
+	  blkcnt = minion_sdhci_block_count;
+	  blksiz = 512; // should be minion_sdhci_block_size;
+	  write_buf = host->start_addr;
+	}
       cmd = val >> 8;
-      xmit = 1;
       arg = minion_sdhci_argument;
+      timeout = minion_sdhci_timeout_control;
       verilator_printf("// s%d,%.8X,%X\n", cmd, arg, setting);
-      for (i = 4; i--; ) verilator_loop(setting, start, cmd, xmit, arg, &finish, &crc_ok, &index_ok, response);
+      for (i = 4; i--; )
+	verilator_loop(setting, start, cmd, timeout, arg, data_start, blksiz, blkcnt, align, &finish_cmd, &finish_data, &crc_ok, &index_ok, &transf_cnt, read_buf, write_buf, response);
       start = 1;
       do
 	{
-	  verilator_loop(setting, start, cmd, xmit, arg, &finish, &crc_ok, &index_ok, response);
+	  verilator_loop(setting, start, cmd, timeout, arg, data_start, blksiz, blkcnt, align, &finish_cmd, &finish_data, &crc_ok, &index_ok, &transf_cnt, read_buf, write_buf, response);
 	}
-      while (!finish);
+      while ((data_start && !finish_data) || !finish_cmd);
       start = 0;
-      for (i = 4; i--; ) verilator_loop(setting, start, cmd, xmit, arg, &finish, &crc_ok, &index_ok, response);
-      
+      data_start = 0;
+      do
+	{
+	  verilator_loop(setting, start, cmd, timeout, arg, data_start, blksiz, blkcnt, align, &finish_cmd, &finish_data, &crc_ok, &index_ok, &transf_cnt, read_buf, write_buf, response);
+	}
+      while (finish_cmd || finish_data);
       minion_sdhci_int_status = MINION_SDHCI_INT_RESPONSE;
       break;
     case MINION_SDHCI_BLOCK_GAP_CONTROL	: minion_sdhci_block_gap = val; break;
     case MINION_SDHCI_WAKE_UP_CONTROL	: minion_sdhci_wake_up = val; break;
     case MINION_SDHCI_TIMEOUT_CONTROL	: minion_sdhci_timeout_control = val; break;
-    case MINION_SDHCI_SOFTWARE_RESET	: minion_sdhci_software_reset = val; break;
+    case MINION_SDHCI_SOFTWARE_RESET	:
+		minion_sdhci_software_reset = val;
+		minion_sdhci_timeout_control = 1000;
+		break;
     case MINION_SDHCI_CLOCK_CONTROL	: minion_sdhci_clock_control = val; break;
     case MINION_SDHCI_INT_STATUS	: minion_sdhci_int_status = val; break;
     case MINION_SDHCI_INT_ENABLE	: minion_sdhci_int_enable = val; break;
@@ -361,27 +353,22 @@ static void minion_sdhci_write(struct minion_sdhci_host *host, u32 val, int reg)
     case MINION_SDHCI_MAX_CURRENT	: minion_sdhci_max_current = val; break;
     case MINION_SDHCI_SET_ACMD12_ERROR	: minion_sdhci_set_acmd12 = val; break;
     case MINION_SDHCI_SET_INT_ERROR	: minion_sdhci_set_int = val; break;
-    case MINION_SDHCI_ADMA_ERROR	: minion_sdhci_adma_error = val; break;
-    case MINION_SDHCI_ADMA_ADDRESS	: minion_sdhci_adma_address = val; break;
     case MINION_SDHCI_SLOT_INT_STATUS	: minion_sdhci_slot_int = val; break;
     case MINION_SDHCI_HOST_VERSION	: minion_sdhci_host_version = val; break;
-    case MINION_SDHCI_BLOCK_COUNT   	: minion_sdhci_block_count = val; break;
     default: printf("unknown(%d)", reg);
     }
 }
 
 static u32 minion_sdhci_read(struct minion_sdhci_host *host, int reg)
 {
-#ifdef CONFIG_MINION_VERBOSE
-  printf("read(host->ioaddr + %s);\n", nam(reg));
-#endif
   switch (reg)
     {
-    case MINION_SDHCI_RESPONSE          : return resp_busy ? response[3] : response[3] & 0xFFFFFF;
-    case MINION_SDHCI_RESPONSE+4        : return response[2];
-    case MINION_SDHCI_RESPONSE+8        : return response[1];
-    case MINION_SDHCI_RESPONSE+12       : return response[0];
-    case MINION_SDHCI_INT_STATUS	: return MINION_SDHCI_INT_RESPONSE|MINION_SDHCI_INT_DATA_AVAIL;
+    case MINION_SDHCI_RESPONSE          : return response[0];
+    case MINION_SDHCI_RESPONSE+4        : return response[1];
+    case MINION_SDHCI_RESPONSE+8        : return response[2];
+    case MINION_SDHCI_RESPONSE+12       : return response[3];
+    case MINION_SDHCI_INT_STATUS	:
+      return response[4] < minion_sdhci_timeout_control ? MINION_SDHCI_INT_RESPONSE|MINION_SDHCI_INT_DATA_AVAIL : MINION_SDHCI_INT_ERROR;
     case MINION_SDHCI_INT_ENABLE	: return minion_sdhci_int_enable;
     case MINION_SDHCI_PRESENT_STATE	: return MINION_SDHCI_DATA_AVAILABLE;
     case MINION_SDHCI_HOST_VERSION	: return minion_sdhci_host_version;
@@ -430,67 +417,6 @@ static void minion_sdhci_cmd_done(struct minion_sdhci_host *host, struct mmc_cmd
 	}
 }
 
-static void minion_sdhci_transfer_pio(struct minion_sdhci_host *host, struct mmc_data *data)
-{
-	int i;
-	char *offs;
-	for (i = 0; i < data->blocksize; i += 4) {
-		offs = data->dest + i;
-		if (data->flags == MMC_DATA_READ)
-			*(u32 *)offs = minion_sdhci_read(host, MINION_SDHCI_BUFFER);
-		else
-			minion_sdhci_write(host, *(u32 *)offs, MINION_SDHCI_BUFFER);
-	}
-}
-
-static int minion_sdhci_transfer_data(struct minion_sdhci_host *host, struct mmc_data *data,
-				unsigned int start_addr)
-{
-	unsigned int stat, rdy, mask, timeout, block = 0;
-#ifdef CONFIG_MMC_SDMA
-	unsigned char ctrl;
-	ctrl = minion_sdhci_read(host, MINION_SDHCI_HOST_CONTROL);
-	ctrl &= ~MINION_SDHCI_CTRL_DMA_MASK;
-	minion_sdhci_write(host, ctrl, MINION_SDHCI_HOST_CONTROL);
-#endif
-
-	timeout = 1000000;
-	rdy = MINION_SDHCI_INT_SPACE_AVAIL | MINION_SDHCI_INT_DATA_AVAIL;
-	mask = MINION_SDHCI_DATA_AVAILABLE | MINION_SDHCI_SPACE_AVAILABLE;
-	do {
-		stat = minion_sdhci_read(host, MINION_SDHCI_INT_STATUS);
-		if (stat & MINION_SDHCI_INT_ERROR) {
-			printf("%s: Error detected in status(0x%X)!\n",
-			       __func__, stat);
-			return -EIO;
-		}
-		if (stat & rdy) {
-			if (!(minion_sdhci_read(host, MINION_SDHCI_PRESENT_STATE) & mask))
-				continue;
-			minion_sdhci_write(host, rdy, MINION_SDHCI_INT_STATUS);
-			minion_sdhci_transfer_pio(host, data);
-			data->dest += data->blocksize;
-			if (++block >= data->blocks)
-				break;
-		}
-#ifdef CONFIG_MMC_SDMA
-		if (stat & MINION_SDHCI_INT_DMA_END) {
-			minion_sdhci_write(host, MINION_SDHCI_INT_DMA_END, MINION_SDHCI_INT_STATUS);
-			start_addr &= ~(MINION_SDHCI_DEFAULT_BOUNDARY_SIZE - 1);
-			start_addr += MINION_SDHCI_DEFAULT_BOUNDARY_SIZE;
-			minion_sdhci_write(host, start_addr, MINION_SDHCI_DMA_ADDRESS);
-		}
-#endif
-		if (timeout-- > 0)
-			udelay(10);
-		else {
-			printf("%s: Transfer data timeout\n", __func__);
-			return -ETIMEDOUT;
-		}
-	} while (!(stat & MINION_SDHCI_INT_DATA_END));
-	return 0;
-}
-
 /*
  * No command will be sent by driver if card is busy, so driver must wait
  * for card ready state.
@@ -500,7 +426,7 @@ static int minion_sdhci_transfer_data(struct minion_sdhci_host *host, struct mmc
  */
 #define MINION_SDHCI_CMD_MAX_TIMEOUT			3200
 #define MINION_SDHCI_CMD_DEFAULT_TIMEOUT		100
-#define MINION_SDHCI_READ_STATUS_TIMEOUT		1000000000
+#define MINION_SDHCI_READ_STATUS_TIMEOUT		1000
 
 #ifdef CONFIG_DM_MMC_OPS
 static int minion_sdhci_send_command(struct udevice *dev, struct mmc_cmd *cmd,
@@ -517,7 +443,7 @@ static int minion_sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 	unsigned int stat = 0;
 	int ret = 0;
 	u32 mask, flags, mode;
-	unsigned int time = 0, start_addr = 0;
+	unsigned int time = 0;
 	int mmc_dev = mmc_get_blk_desc(mmc)->devnum;
 	unsigned start = get_timer(0);
 
@@ -582,18 +508,12 @@ static int minion_sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 		if (data->flags == MMC_DATA_READ)
 			mode |= MINION_SDHCI_TRNS_READ;
 
-#ifdef CONFIG_MMC_SDMA
 		if (data->flags == MMC_DATA_READ)
-			start_addr = (unsigned long)data->dest;
+			host->start_addr = data->dest;
 		else
-			start_addr = (unsigned long)data->src;
+			host->start_addr = data->src;
 
-		minion_sdhci_write(host, start_addr, MINION_SDHCI_DMA_ADDRESS);
-		mode |= MINION_SDHCI_TRNS_DMA;
-#endif
-		minion_sdhci_write(host, MINION_SDHCI_MAKE_BLKSZ(MINION_SDHCI_DEFAULT_BOUNDARY_ARG,
-				data->blocksize),
-				MINION_SDHCI_BLOCK_SIZE);
+		minion_sdhci_write(host, data->blocksize, MINION_SDHCI_BLOCK_SIZE);
 		minion_sdhci_write(host, data->blocks, MINION_SDHCI_BLOCK_COUNT);
 		minion_sdhci_write(host, mode, MINION_SDHCI_TRANSFER_MODE);
 	} else if (cmd->resp_type & MMC_RSP_BUSY) {
@@ -613,9 +533,7 @@ static int minion_sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 			break;
 
 		if (end >= MINION_SDHCI_READ_STATUS_TIMEOUT) {
-			if (host->quirks & MINION_SDHCI_QUIRK_BROKEN_R1B) {
-				return 0;
-			} else {
+		  {
 				printf("%s: Timeout for status update!\n",
 				       __func__);
 				return -ETIMEDOUT;
@@ -628,12 +546,6 @@ static int minion_sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 		minion_sdhci_write(host, mask, MINION_SDHCI_INT_STATUS);
 	} else
 		ret = -1;
-
-	if (!ret && data)
-		ret = minion_sdhci_transfer_data(host, data, start_addr);
-
-	if (host->quirks & MINION_SDHCI_QUIRK_WAIT_SEND_CMD)
-		udelay(1000);
 
 	stat = minion_sdhci_read(host, MINION_SDHCI_INT_STATUS);
 	minion_sdhci_write(host, MINION_SDHCI_INT_ALL_MASK, MINION_SDHCI_INT_STATUS);
@@ -768,9 +680,6 @@ static void minion_sdhci_set_power(struct minion_sdhci_host *host, unsigned shor
 		return;
 	}
 
-	if (host->quirks & MINION_SDHCI_QUIRK_NO_SIMULT_VDD_AND_POWER)
-		minion_sdhci_write(host, pwr, MINION_SDHCI_POWER_CONTROL);
-
 	pwr |= MINION_SDHCI_POWER_ON;
 
 	minion_sdhci_write(host, pwr, MINION_SDHCI_POWER_CONTROL);
@@ -797,12 +706,10 @@ static void minion_sdhci_set_ios(struct mmc *mmc)
 	ctrl = minion_sdhci_read(host, MINION_SDHCI_HOST_CONTROL);
 	if (mmc->bus_width == 8) {
 		ctrl &= ~MINION_SDHCI_CTRL_4BITBUS;
-		if ((MINION_SDHCI_GET_VERSION(host) >= MINION_SDHCI_SPEC_300) ||
-				(host->quirks & MINION_SDHCI_QUIRK_USE_WIDE8))
+		if ((MINION_SDHCI_GET_VERSION(host) >= MINION_SDHCI_SPEC_300))
 			ctrl |= MINION_SDHCI_CTRL_8BITBUS;
 	} else {
-		if ((MINION_SDHCI_GET_VERSION(host) >= MINION_SDHCI_SPEC_300) ||
-				(host->quirks & MINION_SDHCI_QUIRK_USE_WIDE8))
+		if ((MINION_SDHCI_GET_VERSION(host) >= MINION_SDHCI_SPEC_300))
 			ctrl &= ~MINION_SDHCI_CTRL_8BITBUS;
 		if (mmc->bus_width == 4)
 			ctrl |= MINION_SDHCI_CTRL_4BITBUS;
@@ -813,9 +720,6 @@ static void minion_sdhci_set_ios(struct mmc *mmc)
 	if (mmc->clock > 26000000)
 		ctrl |= MINION_SDHCI_CTRL_HISPD;
 	else
-		ctrl &= ~MINION_SDHCI_CTRL_HISPD;
-
-	if (host->quirks & MINION_SDHCI_QUIRK_NO_HISPD_BIT)
 		ctrl &= ~MINION_SDHCI_CTRL_HISPD;
 
 	minion_sdhci_write(host, ctrl, MINION_SDHCI_HOST_CONTROL);
@@ -836,18 +740,7 @@ int minion_sdhci_setup_cfg(struct mmc_config *cfg, struct minion_sdhci_host *hos
 
 	caps = minion_sdhci_read(host, MINION_SDHCI_CAPABILITIES);
 
-#ifdef CONFIG_MMC_SDMA
-	if (!(caps & MINION_SDHCI_CAN_DO_SDMA)) {
-		printf("%s: Your controller doesn't support SDMA!!\n",
-		       __func__);
-		return -EINVAL;
-	}
-#endif
-	if (host->quirks & MINION_SDHCI_QUIRK_REG32_RW)
-		host->version =
-			minion_sdhci_read(host, MINION_SDHCI_HOST_VERSION - 2) >> 16;
-	else
-		host->version = minion_sdhci_read(host, MINION_SDHCI_HOST_VERSION);
+	host->version = minion_sdhci_read(host, MINION_SDHCI_HOST_VERSION);
 
 	cfg->name = host->name;
 #ifndef CONFIG_DM_MMC_OPS
@@ -884,9 +777,6 @@ int minion_sdhci_setup_cfg(struct mmc_config *cfg, struct minion_sdhci_host *hos
 		cfg->voltages |= MMC_VDD_29_30 | MMC_VDD_30_31;
 	if (caps & MINION_SDHCI_CAN_VDD_180)
 		cfg->voltages |= MMC_VDD_165_195;
-
-	if (host->quirks & MINION_SDHCI_QUIRK_BROKEN_VOLTAGE)
-		cfg->voltages |= host->voltages;
 
 	cfg->host_caps = MMC_MODE_HS | MMC_MODE_HS_52MHz | MMC_MODE_4BIT;
 	if (MINION_SDHCI_GET_VERSION(host) >= MINION_SDHCI_SPEC_300) {
@@ -934,12 +824,6 @@ static int minion_sdhci_probe(struct udevice *dev)
 	int ret;
 
 	host->name = "minion_sdhci";
-	host->quirks = MINION_SDHCI_QUIRK_WAIT_SEND_CMD |
-		       MINION_SDHCI_QUIRK_BROKEN_R1B;
-
-#ifdef CONFIG_MINION_HISPD_BROKEN
-	host->quirks |= MINION_SDHCI_QUIRK_NO_HISPD_BIT;
-#endif
 
 	ret = minion_sdhci_setup_cfg(&plat->cfg, host, CONFIG_MINION_SDHCI_MAX_FREQ,
 			      CONFIG_MINION_SDHCI_MIN_FREQ);
@@ -972,7 +856,6 @@ static int minion_sdhci_ofdata_to_platdata(struct udevice *dev)
 	struct minion_sdhci_host *host = dev_get_priv(dev);
 
 	host->name = dev->name;
-	host->ioaddr = (void *)dev_get_addr(dev);
 
 	return 0;
 }

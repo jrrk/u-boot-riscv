@@ -61,6 +61,7 @@ module sd_cmd_serial_host (
 	   wait_reg_o,
 	   crc_val_o,
 	   packet_o,
+	   start_data_o,
            cmd_dat_i,
            cmd_out_o,
            cmd_oe_o
@@ -75,7 +76,7 @@ parameter RESP_SIZE_SHORT = 39;
 //---------------Input ports---------------
 input sd_clk;
 input rst;
-input [1:0] setting_i;
+input [2:0] setting_i;
 input [37:0] cmd_i;
 input start_i;
 input cmd_dat_i;
@@ -88,13 +89,14 @@ output reg crc_ok_o;
 output reg index_ok_o;
 output reg cmd_oe_o;
 output reg cmd_out_o;
+output reg start_data_o;
 output wire [6:0] crc_val_o;
 output reg [31:0] wait_reg_o;
 //---------------Internal variable-----------
    reg [CMD_SIZE-1:0]  cmd_buff;
    reg 		       cmd_dat_reg;
    reg [7:0] 	       resp_len;
-   reg 		       with_response;
+   reg 		       with_response, with_data;
    
 //CRC
 reg crc_rst;
@@ -170,7 +172,7 @@ begin: FSM_COMBO
                 next_state = FINISH_RD_WR;
             end
             else begin
-                next_state = READ;
+               next_state = READ;
             end
         FINISH_RD_WR:
 	    if (start_i)
@@ -187,12 +189,14 @@ begin: COMMAND_DECODER
     if (rst) begin
         resp_len <= 0;
         with_response <= 0;
+        with_data <= 0;
         cmd_buff <= 0;
     end
     else begin
         if (start_i == 1) begin
             resp_len <= setting_i[1] ? RESP_SIZE_LONG : RESP_SIZE_SHORT;
             with_response <= setting_i[0];
+            with_data <= setting_i[2];
             cmd_buff <= {2'b01,cmd_i};
         end
     end
@@ -225,6 +229,7 @@ begin: FSM_OUT
        counter <= 0;
        cmd_dat_reg <= 0;
        packet_o <= 0;
+       start_data_o <= 0;
     end
     else begin
        case(state)
@@ -240,6 +245,7 @@ begin: FSM_OUT
                crc_enable <= 0;
                index_ok_o <= 0;
                finish_o <= 0;
+	       start_data_o <= 0;
             end
             SETUP_CRC: begin
                crc_rst <= 0;
@@ -292,7 +298,10 @@ begin: FSM_OUT
                if (counter <= resp_len)
                  crc_bit <= cmd_dat_reg;
 	       else
-                 crc_enable <= 0;		  
+		 begin
+                    crc_enable <= 0;
+		    start_data_o <= with_data;
+		 end
                if (counter <= resp_len+7) begin
                   response_o <= {response_o[RESP_SIZE_LONG+5:0],cmd_dat_reg};
                end

@@ -271,7 +271,7 @@ static int do_mmc_read(cmd_tbl_t *cmdtp, int flag,
 		       int argc, char * const argv[])
 {
 	struct mmc *mmc;
-	u32 blk, cnt, n, addr;
+	u32 blk, cnt, n, addr, i;
 
 	if (argc != 4)
 		return CMD_RET_USAGE;
@@ -284,8 +284,9 @@ static int do_mmc_read(cmd_tbl_t *cmdtp, int flag,
 	if (!mmc)
 		return CMD_RET_FAILURE;
 
-	char buf[cnt * 512];
-
+	unsigned char buf[cnt * 512];
+	memset(buf, 0, cnt*512);
+	
 	printf("\nMMC read: dev # %d, block # %d, count %d ... ",
 	       curr_device, blk, cnt);
 
@@ -294,6 +295,12 @@ static int do_mmc_read(cmd_tbl_t *cmdtp, int flag,
 	flush_cache((ulong)addr, cnt * 512); /* FIXME */
 	printf("%d blocks read: %s\n", n, (n == cnt) ? "OK" : "ERROR");
 
+#ifdef CONFIG_MINION_VERBOSE
+	for (i = 0; i < cnt*512; i++)
+	  {
+	    if (buf[i]) printf("%X => %X\n", i, buf[i]);
+	  }
+#endif
 	return (n == cnt) ? CMD_RET_SUCCESS : CMD_RET_FAILURE;
 }
 static int do_mmc_write(cmd_tbl_t *cmdtp, int flag,
