@@ -83,7 +83,17 @@
  wire     	    finish_data_o;
  wire     	    crc_ok_o;
  wire     	    index_ok_o;
- wire [15:0] 	    transf_cnt_o;
+ wire [15:0] 	    transf_cnt_o; 
+ wire   [6:0] 	 crc_val_o;
+ wire   [6:0] 	 crc_actual_o;
+ wire   	 sd_rd_o;
+ wire   	 sd_we_o;
+ wire   [31:0] 	 sd_data_o;
+ wire   [31:0] 	 wait_o;
+ wire   [31:0] 	 wait_data_o;
+ wire   [31:0] 	 status_o;
+ wire   [31:0] 	 packet0_o;
+ wire   [15:0] 	 packet1_o;
  	    
 usimv_top dut(
     .sd_clk     (sd_clk),
@@ -106,7 +116,17 @@ usimv_top dut(
     .response3_o(response3_o),
     .crc_ok_o   (crc_ok_o),
     .index_ok_o (index_ok_o),
-    .transf_cnt_o(transf_cnt_o)
+    .transf_cnt_o(transf_cnt_o),
+    .wait_o(wait_o),
+    .wait_data_o(wait_data_o),
+    .status_o(status_o),
+    .packet0_o(packet0_o),
+    .packet1_o(packet1_o),
+    .crc_val_o(crc_val_o),
+    .crc_actual_o(crc_actual_o),
+    .sd_rd_o(sd_rd_o),
+    .sd_we_o(sd_we_o),
+    .sd_data_o(sd_data_o)
     );
 
 initial

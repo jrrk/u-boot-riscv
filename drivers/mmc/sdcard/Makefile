@@ -11,7 +11,7 @@ clean:
 	rm -rf Vusim_top obj_dir
 
 simv: usimv_top.sv sd_verilator_model.v sd_crc_16.v sd_crc_7.v sd_cmd_serial_host.v usimv_top_include.v
-	vcs -full64 +lint=TFIPC-L -gui -o $@ usimv_top_template.sv usimv_top.sv sd_verilator_model.v sd_crc_16.v sd_crc_7.v sd_cmd_serial_host.v sd_data_serial_host.v
+	vcs -full64 +lint=TFIPC-L -gui -o $@ usimv_top_template.sv usimv_top.sv sd_verilator_model.v sd_crc_16.v sd_crc_7.v sd_cmd_serial_host.v sd_data_serial_host.v sd_top.v
 
 standalone:
 	g++ ../{mmc,mmc-uclass,mmc_write,minion_sdhci}.o obj_dir/*.o -lstdc++ -lc |& cut -d: -f3|sort -u
