@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <termios.h>
 #include <unistd.h>
+#include <assert.h>
 #include <sys/ioctl.h>
 #else
 
@@ -47,6 +48,7 @@ int cfsetospeed(struct termios *termios_p, speed_t speed);
 int tcsetattr(int fd, int optional_actions, const struct termios *termios_p);
 int vsnprintf (char * __s, size_t maxlen, const char *format, __gnuc_va_list __arg);
 int usleep(useconds_t usec);
+void __assert_fail (const char *__assertion, const char *__file, unsigned int __line, const char *__function);
 
 #define O_RDONLY            00
 #define O_WRONLY            01
@@ -69,6 +71,11 @@ void myexit(int status)
 void myperror(const char *s)
 {
   perror(s);
+}
+
+void myassert(int cond)
+{
+  ((cond) ? (void) (0) : __assert_fail ("cond", "drivers/mmc/minion_helper.c", 77, __PRETTY_FUNCTION__));
 }
 
 int fionread(unsigned *cmd, unsigned *arg, unsigned *len, unsigned *resp)
@@ -145,15 +152,18 @@ void open_handle(void)
 
 void uart_printf(const char *fmt, ...)
 {
-  int i;
+  int i, rslt;
   va_list args;
   char printbuffer[256];
   va_start(args, fmt);
   i = vsnprintf(printbuffer, sizeof(printbuffer), fmt, args);
   va_end(args);
-  write(uart_handle, printbuffer, i);
+  tcflush(uart_handle, TCIOFLUSH);
+  rslt = write(uart_handle, printbuffer, i);
+  myassert(rslt==i);
   tcdrain(uart_handle);
-  write(log_handle, printbuffer, i);
+  rslt = write(log_handle, printbuffer, i);
+  myassert(rslt==i);
   bufptr = 0;
 }
 
