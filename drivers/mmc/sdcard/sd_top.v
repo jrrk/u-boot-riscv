@@ -59,9 +59,10 @@
 
 `default_nettype none
 
-module usimv_top(
+module sd_top(
  input 		 sd_clk,
- input 		 rst,
+ input 		 cmd_rst,
+ input 		 data_rst,
  input [2:0] 	 setting_i,
  input 		 start_i,
  input [31:0] 	 arg_i,
@@ -72,6 +73,8 @@ module usimv_top(
  input [15:0] 	 sd_blkcnt_i,
  input [11:0] 	 sd_blksize_i,
  input [31:0] 	 sd_data_i,
+ input [3:0] 	 sd_dat_to_host,
+ input 		 sd_cmd_to_host,
 //---------------Output ports---------------
  output [31:0] 	 response0_o,
  output [63:32]  response1_o,
@@ -79,7 +82,7 @@ module usimv_top(
  output [126:96] response3_o,
  output [31:0] 	 wait_o,
  output [31:0] 	 wait_data_o,
- output [31:0] 	 status_o,
+ output [31:4] 	 status_o,
  output [31:0] 	 packet0_o,
  output [15:0] 	 packet1_o,
  output [6:0] 	 crc_val_o,
@@ -91,13 +94,12 @@ module usimv_top(
  output 	 sd_rd_o,
  output 	 sd_we_o,
  output [31:0] 	 sd_data_o,
- output [15:0] 	 transf_cnt_o);
+ output [15:0] 	 transf_cnt_o,
+ output [3:0] 	 sd_dat_to_mem,
+ output 	 sd_cmd_to_mem,
+ output 	 sd_cmd_oe,
+ output 	 sd_dat_oe);
 
-   wire [3:0] 	    sd_dat_to_mem;
-   wire [3:0] 	    sd_dat_to_host;
-   wire 	    sd_cmd_to_mem;
-   wire 	    sd_cmd_to_host;
-   wire 	    sd_cmd_oe, sd_dat_oe;
 
    reg 		    sd_cmd_to_host_dly;
    reg [3:0] 	    sd_dat_to_host_dly;
@@ -105,57 +107,61 @@ module usimv_top(
    wire		    start_data;
    wire 	    data_crc_ok;
    wire 	    sd_busy, sd_data_busy;
-
-sd_top sdtop(
+  
+   assign status_o = {1'b0,crc_val_o[6:0],
+		      1'b0,crc_actual_o[6:0],
+		      5'b0,finish_data_o,sd_data_busy,finish_cmd_o,
+		      index_ok_o,crc_ok_o,data_crc_ok,sd_busy};
+	    
+always @(posedge sd_clk)
+  begin
+     sd_cmd_to_host_dly <= sd_cmd_to_host;
+     sd_dat_to_host_dly <= sd_dat_to_host;
+  end
+   
+sd_cmd_serial_host cmd_serial_host0(
     .sd_clk     (sd_clk),
-    .cmd_rst    (rst),
-    .data_rst   (rst),
+    .rst        (cmd_rst),
     .setting_i  (setting_i),
-    .timeout_i  (timeout_i),
-    .cmd_i      (cmd_i),
-    .arg_i      (arg_i),
+    .cmd_i      ({cmd_i,arg_i}),
     .start_i    (start_i),
-    .sd_data_start_i(sd_data_start_i),
-    .sd_align_i(sd_align_i),
-    .sd_blkcnt_i(sd_blkcnt_i),
-    .sd_blksize_i(sd_blksize_i),
-    .sd_data_i(sd_data_i),
-    .sd_dat_to_host(sd_dat_to_host),
-    .sd_cmd_to_host(sd_cmd_to_host),
-    .finish_cmd_o(finish_cmd_o),
-    .finish_data_o(finish_data_o),
-    .response0_o(response0_o),
-    .response1_o(response1_o),
-    .response2_o(response2_o),
-    .response3_o(response3_o),
+    .timeout_i  (timeout_i),
+    .finish_o   (finish_cmd_o),
+    .response_o ({response3_o,response2_o,response1_o,response0_o,crc_actual_o}),
     .crc_ok_o   (crc_ok_o),
+    .crc_val_o  (crc_val_o),
+    .packet_o	({packet1_o,packet0_o}),
     .index_ok_o (index_ok_o),
-    .transf_cnt_o(transf_cnt_o),
-    .wait_o(wait_o),
-    .wait_data_o(wait_data_o),
-    .status_o(status_o[31:4]),
-    .packet0_o(packet0_o),
-    .packet1_o(packet1_o),
-    .crc_val_o(crc_val_o),
-    .crc_actual_o(crc_actual_o),
-    .sd_rd_o(sd_rd_o),
-    .sd_we_o(sd_we_o),
-    .sd_data_o(sd_data_o),    
-    .sd_dat_to_mem(sd_dat_to_mem),
-    .sd_cmd_to_mem(sd_cmd_to_mem),
-    .sd_dat_oe(sd_dat_oe),
-    .sd_cmd_oe(sd_cmd_oe)
+    .wait_reg_o (wait_o),
+    .start_data_o(start_data),				    
+    .cmd_dat_i  (sd_cmd_to_host_dly),
+    .cmd_out_o  (sd_cmd_to_mem),
+    .cmd_oe_o   (sd_cmd_oe)
     );
 
-   assign status_o[3:0] = 4'b0000;
-   
-sd_verilator_model sdflash1 (
-             .sdClk(~sd_clk),
-             .cmd(sd_cmd_to_mem),
-             .cmdOut(sd_cmd_to_host),
-             .dat(sd_dat_to_mem),
-             .datOut(sd_dat_to_host)
-);
+sd_data_serial_host data_serial_host0(
+    .sd_clk         (sd_clk),
+    .rst            (data_rst),
+    .data_in        (sd_data_i),
+    .rd             (sd_rd_o),
+    .data_out       (sd_data_o),
+    .we             (sd_we_o),
+    .finish_o       (finish_data_o),
+    .DAT_oe_o       (sd_dat_oe),
+    .DAT_dat_o      (sd_dat_to_mem),
+    .DAT_dat_i      (sd_dat_to_host_dly),
+    .blksize        (sd_blksize_i),
+    .bus_4bit       (1'b1),
+    .blkcnt         (sd_blkcnt_i),
+    .start          (start_data ? sd_data_start_i : 2'b00),
+    .byte_alignment (sd_align_i),
+    .timeout_i      (timeout_i),
+    .sd_data_busy   (sd_data_busy),
+    .busy           (sd_busy),
+    .wait_reg_o     (wait_data_o),
+    .crc_ok         (data_crc_ok),
+    .transf_cnt_o   (transf_cnt_o)				      
+    );
   
 endmodule // chip_top
 `default_nettype wire
