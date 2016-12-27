@@ -314,7 +314,7 @@ static void minion_sdhci_write(struct minion_sdhci_host *host, u32 val, int reg)
 	  setting |= 4;
 	  data_start = 2;
 	  blkcnt = minion_sdhci_block_count;
-	  blksiz = 512; // should be minion_sdhci_block_size;
+	  blksiz = minion_sdhci_block_size;
 	  write_buf = host->start_addr;
 	}
       cmd = val >> 8;

@@ -430,9 +430,9 @@ else
         14 : response_S <= 0;
         16 : response_S <= 48;
         17 : response_S <= 48;
-		18 : response_S <= 48;
+	18 : response_S <= 48;
         24 : response_S <= 48;
-		25 : response_S <= 48;
+	25 : response_S <= 48;
         33 : response_S <= 48;
         55 : response_S <= 48;
         41 : response_S <= 48;        
@@ -577,10 +577,6 @@ else
                 
         end 
 
-
-
-
-
         17 :  begin
           if (outDelayCnt==0) begin 
             if (CardStatus[12:9] == `TRAN) begin //If card is in transferstate                               
@@ -686,16 +682,26 @@ else
         end  
 	end
         51 : 
-        begin  
-            if (lastCMD != 55 && outDelayCnt==0) begin
-               $display( "**Error in sequence, CMD 55 should precede 51") ;
-            end
-            else begin
-             responseType=3; 
-             response_CMD[127:96] <= SCR;   
-             appendCrc<=1;
-           end 
-       end   
+          begin  
+             if (lastCMD != 55 && outDelayCnt==0) begin
+		$display( "**Error in sequence, CMD 55 should precede 51") ;
+             end
+             else begin
+		if (outDelayCnt==0) begin 
+		   if (CardStatus[12:9] == `TRAN) begin //If card is in transferstate                               
+		      CardStatus[12:9] <=`DATAS;//Put card in data state
+		      response_CMD[127:96] <= CardStatus ;
+		      BlockAddr = 0;
+		   end
+		   else begin
+		      response_S <= 0;
+		      response_CMD[127:96] <= 0; 
+		   end
+		   responseType=3; 
+		   appendCrc<=1;
+		end 
+	     end // else: !if(lastCMD != 55 && outDelayCnt==0)
+	  end
         default:
 	  ;
 	   
