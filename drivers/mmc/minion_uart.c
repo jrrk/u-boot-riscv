@@ -22,11 +22,7 @@
 #include <malloc.h>
 #include <errno.h>
 #include <mmc.h>
-
-void open_handle(void);
-int fionread(unsigned *cmd, unsigned *arg, unsigned *len, unsigned *resp);
-void uart_printf(const char *fmt, ...);
-volatile unsigned int * const sd_base = (volatile unsigned int*)(6<<20);
+#include "minion_lib.h"
 
 /*
  * Controller registers
@@ -35,7 +31,6 @@ volatile unsigned int * const sd_base = (volatile unsigned int*)(6<<20);
 #define MINION_UART_DMA_ADDRESS	0x00
 
 #define MINION_UART_BLOCK_SIZE	0x04
-#define  MINION_UART_MAKE_BLKSZ(dma, blksz) (((dma & 0x7) << 12) | (blksz & 0xFFF))
 
 #define MINION_UART_BLOCK_COUNT	0x06
 
@@ -218,19 +213,6 @@ volatile unsigned int * const sd_base = (volatile unsigned int*)(6<<20);
 #define MINION_UART_MAX_DIV_SPEC_200	256
 #define MINION_UART_MAX_DIV_SPEC_300	2046
 
-/*
- * quirks
- */
-#define MINION_UART_QUIRK_32BIT_DMA_ADDR	(1 << 0)
-#define MINION_UART_QUIRK_REG32_RW		(1 << 1)
-#define MINION_UART_QUIRK_BROKEN_R1B		(1 << 2)
-#define MINION_UART_QUIRK_NO_HISPD_BIT	(1 << 3)
-#define MINION_UART_QUIRK_BROKEN_VOLTAGE	(1 << 4)
-#define MINION_UART_QUIRK_NO_CD		(1 << 5)
-#define MINION_UART_QUIRK_WAIT_SEND_CMD	(1 << 6)
-#define MINION_UART_QUIRK_NO_SIMULT_VDD_AND_POWER (1 << 7)
-#define MINION_UART_QUIRK_USE_WIDE8		(1 << 8)
-
 /* to make gcc happy */
 struct minion_uart_host;
 
@@ -264,16 +246,14 @@ struct minion_uart_host {
 	void (*set_control_reg)(struct minion_uart_host *host);
 	void (*set_clock)(int dev_index, unsigned int div);
 	uint	voltages;
-
 	struct mmc_config cfg;
+        const char *start_addr;
 };
 
 static int minion_uart_host_control;
 static int minion_uart_power_on;
 static int minion_uart_ctrl_4bitbus;
-static int minion_uart_ctrl_hispd;
 static int minion_uart_ctrl_dma;
-static int minion_uart_ctrl_sdma;
 static int minion_uart_argument;
 static int minion_uart_ctrl_adma32;
 static int minion_uart_ctrl_8bitbus;
@@ -281,7 +261,6 @@ static int minion_uart_ctrl_cd;
 static int minion_uart_ctrl_cd;
 static int minion_uart_power_control;
 static int minion_uart_power_180;
-static int minion_uart_power_300;
 static int minion_uart_block_gap;
 static int minion_uart_wake_up;
 static int minion_uart_timeout_control;
@@ -294,56 +273,62 @@ static int minion_uart_present_state;
 static int minion_uart_max_current;
 static int minion_uart_set_acmd12;
 static int minion_uart_set_int;
-static int minion_uart_adma_error;
-static int minion_uart_adma_address;
 static int minion_uart_slot_int;
 static int minion_uart_host_version;
 static int minion_uart_block_count;
+static int minion_uart_transfer_mode;
+static int minion_uart_block_size;
 static int minion_uart_command;
-static unsigned resp_busy, setting, response[8];
+static unsigned setting, blksiz, blkcnt, response[8];
 
 static void minion_uart_write(struct minion_uart_host *host, u32 val, int reg)
 {  
-  unsigned addr, data, len, tmp_resp[8];
   switch (reg)
     {
+    case MINION_UART_BLOCK_COUNT	: minion_uart_block_count = val; break;
+    case MINION_UART_BLOCK_SIZE	        : minion_uart_block_size = val; break;
     case MINION_UART_HOST_CONTROL	: minion_uart_host_control = val; break;
     case MINION_UART_POWER_ON	        : minion_uart_power_on = val; break;
     case MINION_UART_CTRL_4BITBUS	: minion_uart_ctrl_4bitbus = val; break;
-    case MINION_UART_CTRL_HISPD	: minion_uart_ctrl_hispd = val; break;
     case MINION_UART_CTRL_DMA_MASK	: minion_uart_ctrl_dma = val; break;
-    case MINION_UART_CTRL_SDMA	        : minion_uart_ctrl_sdma = val; break;
-    case MINION_UART_ARGUMENT	: minion_uart_argument = val; break;
+    case MINION_UART_ARGUMENT	        : minion_uart_argument = val; break;
+    case MINION_UART_TRANSFER_MODE	: minion_uart_transfer_mode = val; break;
+
     case MINION_UART_CTRL_ADMA32	: minion_uart_ctrl_adma32 = val; break;
     case MINION_UART_CTRL_8BITBUS	: minion_uart_ctrl_8bitbus = val; break;
-    case MINION_UART_CTRL_CD_TEST_INS  : minion_uart_ctrl_cd = val; break;
+    case MINION_UART_CTRL_CD_TEST_INS   : minion_uart_ctrl_cd = val; break;
     case MINION_UART_CTRL_CD_TEST	: minion_uart_ctrl_cd = val; break;
     case MINION_UART_POWER_CONTROL	: minion_uart_power_control = val; break;
     case MINION_UART_POWER_180	        : minion_uart_power_180 = val; break;
-    case MINION_UART_POWER_300	        : minion_uart_power_300 = val; break;
     case MINION_UART_COMMAND	        :
       minion_uart_command = val >> 8;
-      resp_busy = 0;
       switch(val & MINION_UART_CMD_RESP_MASK)
 	{
 	case MINION_UART_CMD_RESP_NONE: setting = 0; break;
 	case MINION_UART_CMD_RESP_SHORT: setting = 1; break;
-	case MINION_UART_CMD_RESP_SHORT_BUSY: setting = 1; resp_busy = 1; break;
+	case MINION_UART_CMD_RESP_SHORT_BUSY: setting = 1; break;
 	case MINION_UART_CMD_RESP_LONG: setting = 3; break;
 	}
-      uart_printf("s%.2X,%.8X,%X\r", minion_uart_command, minion_uart_argument, setting);
+      if (minion_uart_transfer_mode & MINION_UART_TRNS_READ)
+	{
+	  setting |= 0x14;
+	  blkcnt = minion_uart_block_count;
+	  blksiz = 512; // should be minion_uart_block_size;
+	}
+      sd_transaction(minion_uart_command, minion_uart_argument, setting, response);
+      log_printf("sd_transaction(%d,0x%.8X,0x%X,resp);\n", minion_uart_command, minion_uart_argument, setting);
       minion_uart_int_status = MINION_UART_INT_RESPONSE;
       break;
     case MINION_UART_BLOCK_GAP_CONTROL	: minion_uart_block_gap = val; break;
     case MINION_UART_WAKE_UP_CONTROL	: minion_uart_wake_up = val; break;
     case MINION_UART_TIMEOUT_CONTROL	:
-      uart_printf("w%.6X,%.8X\r", sd_base+9, val);
-      while (fionread(&addr, &data, &len, tmp_resp) < 2);
+      uart_write(sd_base+9, val);
       minion_uart_timeout_control = val; 
       break;
     case MINION_UART_SOFTWARE_RESET	:
       minion_uart_software_reset = val;
       minion_uart_timeout_control = 1000; 
+      minion_uart_transfer_mode = 0;
       open_handle();
       break;
     case MINION_UART_CLOCK_CONTROL	: minion_uart_clock_control = val; break;
@@ -354,11 +339,8 @@ static void minion_uart_write(struct minion_uart_host *host, u32 val, int reg)
     case MINION_UART_MAX_CURRENT	: minion_uart_max_current = val; break;
     case MINION_UART_SET_ACMD12_ERROR	: minion_uart_set_acmd12 = val; break;
     case MINION_UART_SET_INT_ERROR	: minion_uart_set_int = val; break;
-    case MINION_UART_ADMA_ERROR	: minion_uart_adma_error = val; break;
-    case MINION_UART_ADMA_ADDRESS	: minion_uart_adma_address = val; break;
     case MINION_UART_SLOT_INT_STATUS	: minion_uart_slot_int = val; break;
     case MINION_UART_HOST_VERSION	: minion_uart_host_version = val; break;
-    case MINION_UART_BLOCK_COUNT   	: minion_uart_block_count = val; break;
     default: printf("unknown(%d)", reg);
     }
 }
@@ -366,7 +348,7 @@ static void minion_uart_write(struct minion_uart_host *host, u32 val, int reg)
 static u32 minion_uart_read(struct minion_uart_host *host, int reg)
 {
   int cnt;
-  unsigned cmd, arg, len, sent[2];
+  unsigned cmd, arg, len;
   switch (reg)
     {
     case MINION_UART_RESPONSE          : return response[0];
@@ -374,20 +356,24 @@ static u32 minion_uart_read(struct minion_uart_host *host, int reg)
     case MINION_UART_RESPONSE+8        : return response[2];
     case MINION_UART_RESPONSE+12       : return response[3];
     case MINION_UART_INT_STATUS	:
+      /*
       cnt = fionread(&cmd, &arg, &len, response);
       if (cnt >= 11)
 	{
 	  assert(cmd==minion_uart_command);
 	  assert(arg==minion_uart_argument);
 	  assert(len==setting);
+      */
 	  return response[4] < minion_uart_timeout_control ? MINION_UART_INT_RESPONSE|MINION_UART_INT_DATA_AVAIL : MINION_UART_INT_ERROR;
+      /*
 	}
       return 0;
+      */
     case MINION_UART_INT_ENABLE	: return minion_uart_int_enable;
     case MINION_UART_PRESENT_STATE	: return MINION_UART_DATA_AVAILABLE;
     case MINION_UART_HOST_VERSION	: return minion_uart_host_version;
-    case MINION_UART_CAPABILITIES       : return MINION_UART_CAN_VDD_330;
-    case MINION_UART_SOFTWARE_RESET     : return 0;
+    case MINION_UART_CAPABILITIES      : return MINION_UART_CAN_VDD_330;
+    case MINION_UART_SOFTWARE_RESET : return 0;
     case MINION_UART_HOST_CONTROL: return minion_uart_host_control;
     case MINION_UART_CLOCK_CONTROL: return minion_uart_clock_control|MINION_UART_CLOCK_INT_STABLE;
     case MINION_UART_BUFFER : return 0;
@@ -431,67 +417,6 @@ static void minion_uart_cmd_done(struct minion_uart_host *host, struct mmc_cmd *
 	}
 }
 
-static void minion_uart_transfer_pio(struct minion_uart_host *host, struct mmc_data *data)
-{
-	int i;
-	char *offs;
-	for (i = 0; i < data->blocksize; i += 4) {
-		offs = data->dest + i;
-		if (data->flags == MMC_DATA_READ)
-			*(u32 *)offs = minion_uart_read(host, MINION_UART_BUFFER);
-		else
-			minion_uart_write(host, *(u32 *)offs, MINION_UART_BUFFER);
-	}
-}
-
-static int minion_uart_transfer_data(struct minion_uart_host *host, struct mmc_data *data,
-				unsigned int start_addr)
-{
-	unsigned int stat, rdy, mask, timeout, block = 0;
-#ifdef CONFIG_MMC_SDMA
-	unsigned char ctrl;
-	ctrl = minion_uart_read(host, MINION_UART_HOST_CONTROL);
-	ctrl &= ~MINION_UART_CTRL_DMA_MASK;
-	minion_uart_write(host, ctrl, MINION_UART_HOST_CONTROL);
-#endif
-
-	timeout = 1000000;
-	rdy = MINION_UART_INT_SPACE_AVAIL | MINION_UART_INT_DATA_AVAIL;
-	mask = MINION_UART_DATA_AVAILABLE | MINION_UART_SPACE_AVAILABLE;
-	do {
-		stat = minion_uart_read(host, MINION_UART_INT_STATUS);
-		if (stat & MINION_UART_INT_ERROR) {
-			printf("%s: Error detected in status(0x%X)!\n",
-			       __func__, stat);
-			return -EIO;
-		}
-		if (stat & rdy) {
-			if (!(minion_uart_read(host, MINION_UART_PRESENT_STATE) & mask))
-				continue;
-			minion_uart_write(host, rdy, MINION_UART_INT_STATUS);
-			minion_uart_transfer_pio(host, data);
-			data->dest += data->blocksize;
-			if (++block >= data->blocks)
-				break;
-		}
-#ifdef CONFIG_MMC_SDMA
-		if (stat & MINION_UART_INT_DMA_END) {
-			minion_uart_write(host, MINION_UART_INT_DMA_END, MINION_UART_INT_STATUS);
-			start_addr &= ~(MINION_UART_DEFAULT_BOUNDARY_SIZE - 1);
-			start_addr += MINION_UART_DEFAULT_BOUNDARY_SIZE;
-			minion_uart_write(host, start_addr, MINION_UART_DMA_ADDRESS);
-		}
-#endif
-		if (timeout-- > 0)
-			udelay(10);
-		else {
-			printf("%s: Transfer data timeout\n", __func__);
-			return -ETIMEDOUT;
-		}
-	} while (!(stat & MINION_UART_INT_DATA_END));
-	return 0;
-}
-
 /*
  * No command will be sent by driver if card is busy, so driver must wait
  * for card ready state.
@@ -501,7 +426,7 @@ static int minion_uart_transfer_data(struct minion_uart_host *host, struct mmc_d
  */
 #define MINION_UART_CMD_MAX_TIMEOUT			3200
 #define MINION_UART_CMD_DEFAULT_TIMEOUT		100
-#define MINION_UART_READ_STATUS_TIMEOUT		1000000000
+#define MINION_UART_READ_STATUS_TIMEOUT		1000
 
 #ifdef CONFIG_DM_MMC_OPS
 static int minion_uart_send_command(struct udevice *dev, struct mmc_cmd *cmd,
@@ -518,7 +443,7 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 	unsigned int stat = 0;
 	int ret = 0;
 	u32 mask, flags, mode;
-	unsigned int time = 0, start_addr = 0;
+	unsigned int time = 0;
 	int mmc_dev = mmc_get_blk_desc(mmc)->devnum;
 	unsigned start = get_timer(0);
 
@@ -583,18 +508,12 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 		if (data->flags == MMC_DATA_READ)
 			mode |= MINION_UART_TRNS_READ;
 
-#ifdef CONFIG_MMC_SDMA
 		if (data->flags == MMC_DATA_READ)
-			start_addr = (unsigned long)data->dest;
+			host->start_addr = data->dest;
 		else
-			start_addr = (unsigned long)data->src;
+			host->start_addr = data->src;
 
-		minion_uart_write(host, start_addr, MINION_UART_DMA_ADDRESS);
-		mode |= MINION_UART_TRNS_DMA;
-#endif
-		minion_uart_write(host, MINION_UART_MAKE_BLKSZ(MINION_UART_DEFAULT_BOUNDARY_ARG,
-				data->blocksize),
-				MINION_UART_BLOCK_SIZE);
+		minion_uart_write(host, data->blocksize, MINION_UART_BLOCK_SIZE);
 		minion_uart_write(host, data->blocks, MINION_UART_BLOCK_COUNT);
 		minion_uart_write(host, mode, MINION_UART_TRANSFER_MODE);
 	} else if (cmd->resp_type & MMC_RSP_BUSY) {
@@ -614,9 +533,7 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 			break;
 
 		if (end >= MINION_UART_READ_STATUS_TIMEOUT) {
-			if (host->quirks & MINION_UART_QUIRK_BROKEN_R1B) {
-				return 0;
-			} else {
+		  {
 				printf("%s: Timeout for status update!\n",
 				       __func__);
 				return -ETIMEDOUT;
@@ -629,12 +546,6 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 		minion_uart_write(host, mask, MINION_UART_INT_STATUS);
 	} else
 		ret = -1;
-
-	if (!ret && data)
-		ret = minion_uart_transfer_data(host, data, start_addr);
-
-	if (host->quirks & MINION_UART_QUIRK_WAIT_SEND_CMD)
-		udelay(1000);
 
 	stat = minion_uart_read(host, MINION_UART_INT_STATUS);
 	minion_uart_write(host, MINION_UART_INT_ALL_MASK, MINION_UART_INT_STATUS);
@@ -769,9 +680,6 @@ static void minion_uart_set_power(struct minion_uart_host *host, unsigned short 
 		return;
 	}
 
-	if (host->quirks & MINION_UART_QUIRK_NO_SIMULT_VDD_AND_POWER)
-		minion_uart_write(host, pwr, MINION_UART_POWER_CONTROL);
-
 	pwr |= MINION_UART_POWER_ON;
 
 	minion_uart_write(host, pwr, MINION_UART_POWER_CONTROL);
@@ -798,12 +706,10 @@ static void minion_uart_set_ios(struct mmc *mmc)
 	ctrl = minion_uart_read(host, MINION_UART_HOST_CONTROL);
 	if (mmc->bus_width == 8) {
 		ctrl &= ~MINION_UART_CTRL_4BITBUS;
-		if ((MINION_UART_GET_VERSION(host) >= MINION_UART_SPEC_300) ||
-				(host->quirks & MINION_UART_QUIRK_USE_WIDE8))
+		if ((MINION_UART_GET_VERSION(host) >= MINION_UART_SPEC_300))
 			ctrl |= MINION_UART_CTRL_8BITBUS;
 	} else {
-		if ((MINION_UART_GET_VERSION(host) >= MINION_UART_SPEC_300) ||
-				(host->quirks & MINION_UART_QUIRK_USE_WIDE8))
+		if ((MINION_UART_GET_VERSION(host) >= MINION_UART_SPEC_300))
 			ctrl &= ~MINION_UART_CTRL_8BITBUS;
 		if (mmc->bus_width == 4)
 			ctrl |= MINION_UART_CTRL_4BITBUS;
@@ -814,9 +720,6 @@ static void minion_uart_set_ios(struct mmc *mmc)
 	if (mmc->clock > 26000000)
 		ctrl |= MINION_UART_CTRL_HISPD;
 	else
-		ctrl &= ~MINION_UART_CTRL_HISPD;
-
-	if (host->quirks & MINION_UART_QUIRK_NO_HISPD_BIT)
 		ctrl &= ~MINION_UART_CTRL_HISPD;
 
 	minion_uart_write(host, ctrl, MINION_UART_HOST_CONTROL);
@@ -837,18 +740,7 @@ int minion_uart_setup_cfg(struct mmc_config *cfg, struct minion_uart_host *host,
 
 	caps = minion_uart_read(host, MINION_UART_CAPABILITIES);
 
-#ifdef CONFIG_MMC_SDMA
-	if (!(caps & MINION_UART_CAN_DO_SDMA)) {
-		printf("%s: Your controller doesn't support SDMA!!\n",
-		       __func__);
-		return -EINVAL;
-	}
-#endif
-	if (host->quirks & MINION_UART_QUIRK_REG32_RW)
-		host->version =
-			minion_uart_read(host, MINION_UART_HOST_VERSION - 2) >> 16;
-	else
-		host->version = minion_uart_read(host, MINION_UART_HOST_VERSION);
+	host->version = minion_uart_read(host, MINION_UART_HOST_VERSION);
 
 	cfg->name = host->name;
 #ifndef CONFIG_DM_MMC_OPS
@@ -885,9 +777,6 @@ int minion_uart_setup_cfg(struct mmc_config *cfg, struct minion_uart_host *host,
 		cfg->voltages |= MMC_VDD_29_30 | MMC_VDD_30_31;
 	if (caps & MINION_UART_CAN_VDD_180)
 		cfg->voltages |= MMC_VDD_165_195;
-
-	if (host->quirks & MINION_UART_QUIRK_BROKEN_VOLTAGE)
-		cfg->voltages |= host->voltages;
 
 	cfg->host_caps = MMC_MODE_HS | MMC_MODE_HS_52MHz | MMC_MODE_4BIT;
 	if (MINION_UART_GET_VERSION(host) >= MINION_UART_SPEC_300) {
@@ -935,8 +824,6 @@ static int minion_uart_probe(struct udevice *dev)
 	int ret;
 
 	host->name = "minion_uart";
-	host->quirks = MINION_UART_QUIRK_WAIT_SEND_CMD |
-		       MINION_UART_QUIRK_BROKEN_R1B;
 
 	ret = minion_uart_setup_cfg(&plat->cfg, host, CONFIG_MINION_UART_MAX_FREQ,
 			      CONFIG_MINION_UART_MIN_FREQ);
@@ -956,7 +843,7 @@ static int minion_uart_probe(struct udevice *dev)
 	/* Enable only interrupts served by the SD controller */
 	minion_uart_write(host, MINION_UART_INT_DATA_MASK | MINION_UART_INT_CMD_MASK,
 		     MINION_UART_INT_ENABLE);
-	/* Mask all sdhci interrupt sources */
+	/* Mask all uart interrupt sources */
 	minion_uart_write(host, 0x0, MINION_UART_SIGNAL_ENABLE);
 
 	//	list_add_tail(&mmc->link, &mmc_devices);
