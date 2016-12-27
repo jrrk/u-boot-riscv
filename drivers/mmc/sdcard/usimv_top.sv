@@ -67,7 +67,7 @@ module usimv_top(
  input [31:0] 	 arg_i,
  input [5:0] 	 cmd_i,
  input [31:0] 	 timeout_i,
- input [1:0] 	 sd_data_start_i,
+ input [2:0] 	 sd_data_start_i,
  input [1:0] 	 sd_align_i,
  input [15:0] 	 sd_blkcnt_i,
  input [11:0] 	 sd_blksize_i,
