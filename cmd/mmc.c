@@ -763,6 +763,18 @@ static int do_mmc_bkops_enable(cmd_tbl_t *cmdtp, int flag,
 }
 #endif
 
+#ifdef CONFIG_MINION_UART
+static int do_mmc_debug(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+{
+	int dev;
+	struct mmc *mmc;
+
+	if (argc != 1) return CMD_RET_USAGE;
+
+	minion_sd_debug();
+}
+#endif
+
 static cmd_tbl_t cmd_mmc[] = {
 	U_BOOT_CMD_MKENT(info, 1, 0, do_mmcinfo, "", ""),
 	U_BOOT_CMD_MKENT(read, 4, 1, do_mmc_read, "", ""),
@@ -773,6 +785,9 @@ static cmd_tbl_t cmd_mmc[] = {
 	U_BOOT_CMD_MKENT(dev, 3, 0, do_mmc_dev, "", ""),
 	U_BOOT_CMD_MKENT(list, 1, 1, do_mmc_list, "", ""),
 	U_BOOT_CMD_MKENT(hwpartition, 28, 0, do_mmc_hwpartition, "", ""),
+#ifdef CONFIG_MINION_UART
+	U_BOOT_CMD_MKENT(debug, 1, 0, do_mmc_debug, "", ""),
+#endif
 #ifdef CONFIG_SUPPORT_EMMC_BOOT
 	U_BOOT_CMD_MKENT(bootbus, 5, 0, do_mmc_bootbus, "", ""),
 	U_BOOT_CMD_MKENT(bootpart-resize, 4, 0, do_mmc_boot_resize, "", ""),

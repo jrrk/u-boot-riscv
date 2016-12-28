@@ -24,6 +24,10 @@ struct termios
 
 void exit(int status);
 int strcmp(const char *s1, const char *s2);
+char *strcpy(char *dest, const char *src);
+char *strncpy(char *dest, const char *src, size_t n);
+size_t strlen(const char *s);
+void *memcpy(void *dest, const void *src, size_t n);
 int open(const char *pathname, int flags, ...);
 ssize_t write(int fd, const void *buf, size_t count);
 ssize_t read(int fd, void *buf, size_t count);
@@ -82,16 +86,20 @@ extern void mystatus (void);
 // SDCARD entry point
 void spi_init(void);
 unsigned sd_transaction_v(int sdcmd, unsigned arg, unsigned setting);
-void sd_transaction(int cmd, unsigned arg, unsigned setting, unsigned resp[]);
+int sd_transaction(int cmd, unsigned arg, unsigned setting, unsigned resp[], unsigned iobuf[], unsigned iobuflen);
 void mysleep(int delay);
 unsigned int sd_resp(int);
 unsigned int sd_stat(int);
+void sd_timeout(int d_timeout);
+void sd_blksize(int d_blksize);
+void sd_blkcnt(int d_blkcnt);
 
 void open_handle(void);
 int fionread(unsigned *cmd, unsigned *arg, unsigned *len, unsigned *resp);
 void uart_printf(const char *fmt, ...);
 void log_printf(const char *fmt, ...);
 void uart_write(volatile unsigned int * const sd_ptr, unsigned val);
+int cli_readline_into_buffer(const char *const prompt, char *buffer, int timeout);
 
 extern volatile unsigned int * const sd_base;
 

@@ -104,10 +104,8 @@
 
 #define MINION_UART_CLOCK_CONTROL	0x2C
 #define  MINION_UART_DIVIDER_SHIFT	8
-#define  MINION_UART_DIVIDER_HI_SHIFT	6
-#define  MINION_UART_DIV_MASK	0xFF
+#define  MINION_UART_DIV_MASK	0x3FF
 #define  MINION_UART_DIV_MASK_LEN	8
-#define  MINION_UART_DIV_HI_MASK	0x300
 #define  MINION_UART_PROG_CLOCK_MODE  0x0020
 #define  MINION_UART_CLOCK_CARD_EN	0x0004
 #define  MINION_UART_CLOCK_INT_STABLE	0x0002
@@ -247,16 +245,12 @@ struct minion_uart_host {
 	void (*set_clock)(int dev_index, unsigned int div);
 	uint	voltages;
 	struct mmc_config cfg;
-        const char *start_addr;
+        uint32_t *start_addr;
 };
 
 static int minion_uart_host_control;
-static int minion_uart_power_on;
-static int minion_uart_ctrl_4bitbus;
 static int minion_uart_ctrl_dma;
 static int minion_uart_argument;
-static int minion_uart_ctrl_adma32;
-static int minion_uart_ctrl_8bitbus;
 static int minion_uart_ctrl_cd;
 static int minion_uart_ctrl_cd;
 static int minion_uart_power_control;
@@ -265,7 +259,7 @@ static int minion_uart_block_gap;
 static int minion_uart_wake_up;
 static int minion_uart_timeout_control;
 static int minion_uart_software_reset;
-static int minion_uart_clock_control;
+static int minion_uart_clock_div;
 static int minion_uart_int_status;
 static int minion_uart_int_enable;
 static int minion_uart_signal_enable;
@@ -279,26 +273,37 @@ static int minion_uart_block_count;
 static int minion_uart_transfer_mode;
 static int minion_uart_block_size;
 static int minion_uart_command;
-static unsigned setting, blksiz, blkcnt, response[8];
+static int minion_old_blocklen;
+
+static unsigned setting, response[10], iobase[512];
+
+enum {maxio=sizeof(iobase)/sizeof(*iobase)};
 
 static void minion_uart_write(struct minion_uart_host *host, u32 val, int reg)
 {  
+  int i, len;
   switch (reg)
     {
     case MINION_UART_BLOCK_COUNT	: minion_uart_block_count = val; break;
     case MINION_UART_BLOCK_SIZE	        : minion_uart_block_size = val; break;
-    case MINION_UART_HOST_CONTROL	: minion_uart_host_control = val; break;
-    case MINION_UART_POWER_ON	        : minion_uart_power_on = val; break;
-    case MINION_UART_CTRL_4BITBUS	: minion_uart_ctrl_4bitbus = val; break;
+    case MINION_UART_HOST_CONTROL	:
+      minion_uart_host_control = val;
+      printf("host_control = %d\n", val);
+      if (val & MINION_UART_CTRL_4BITBUS)
+	printf("4-bit bus enabled\n");
+      else
+	printf("4-bit bus disabled\n");
+      break;
     case MINION_UART_CTRL_DMA_MASK	: minion_uart_ctrl_dma = val; break;
     case MINION_UART_ARGUMENT	        : minion_uart_argument = val; break;
     case MINION_UART_TRANSFER_MODE	: minion_uart_transfer_mode = val; break;
 
-    case MINION_UART_CTRL_ADMA32	: minion_uart_ctrl_adma32 = val; break;
-    case MINION_UART_CTRL_8BITBUS	: minion_uart_ctrl_8bitbus = val; break;
     case MINION_UART_CTRL_CD_TEST_INS   : minion_uart_ctrl_cd = val; break;
     case MINION_UART_CTRL_CD_TEST	: minion_uart_ctrl_cd = val; break;
-    case MINION_UART_POWER_CONTROL	: minion_uart_power_control = val; break;
+    case MINION_UART_POWER_CONTROL	:
+      minion_uart_power_control = val;
+      printf("power control = %d\n", val);
+      break;
     case MINION_UART_POWER_180	        : minion_uart_power_180 = val; break;
     case MINION_UART_COMMAND	        :
       minion_uart_command = val >> 8;
@@ -312,18 +317,24 @@ static void minion_uart_write(struct minion_uart_host *host, u32 val, int reg)
       if (minion_uart_transfer_mode & MINION_UART_TRNS_READ)
 	{
 	  setting |= 0x14;
-	  blkcnt = minion_uart_block_count;
-	  blksiz = 512; // should be minion_uart_block_size;
+	  sd_blkcnt(minion_uart_block_count);
+	  sd_blksize(minion_uart_block_size);
+	  if (minion_uart_host_control & MINION_UART_CTRL_4BITBUS) setting |= 0x20;
 	}
-      sd_transaction(minion_uart_command, minion_uart_argument, setting, response);
       log_printf("sd_transaction(%d,0x%.8X,0x%X,resp);\n", minion_uart_command, minion_uart_argument, setting);
+      len = sd_transaction(minion_uart_command, minion_uart_argument, setting, response, iobase, maxio);
+      if (minion_uart_transfer_mode & MINION_UART_TRNS_READ)
+	{
+	  for (i = 0; i < len; i++)
+	    (host->start_addr)[i] = __be32_to_cpu(iobase[i]);
+	}
       minion_uart_int_status = MINION_UART_INT_RESPONSE;
       break;
     case MINION_UART_BLOCK_GAP_CONTROL	: minion_uart_block_gap = val; break;
     case MINION_UART_WAKE_UP_CONTROL	: minion_uart_wake_up = val; break;
     case MINION_UART_TIMEOUT_CONTROL	:
-      uart_write(sd_base+9, val);
-      minion_uart_timeout_control = val; 
+      minion_uart_timeout_control = val;
+      sd_timeout(minion_uart_timeout_control);
       break;
     case MINION_UART_SOFTWARE_RESET	:
       minion_uart_software_reset = val;
@@ -331,8 +342,15 @@ static void minion_uart_write(struct minion_uart_host *host, u32 val, int reg)
       minion_uart_transfer_mode = 0;
       open_handle();
       break;
-    case MINION_UART_CLOCK_CONTROL	: minion_uart_clock_control = val; break;
-    case MINION_UART_INT_STATUS	: minion_uart_int_status = val; break;
+    case MINION_UART_CLOCK_CONTROL	:
+      minion_uart_clock_div = val >> MINION_UART_DIVIDER_SHIFT;
+      printf("Clock divider = %d\n", minion_uart_clock_div);
+      if (val & MINION_UART_CLOCK_CARD_EN) printf("Card clock enabled\n"); else printf("Card clock disabled\n");
+      break;
+    case MINION_UART_INT_STATUS	:
+      minion_uart_int_status = val;
+      minion_uart_transfer_mode = 0;
+      break;
     case MINION_UART_INT_ENABLE	: minion_uart_int_enable = val; break;
     case MINION_UART_SIGNAL_ENABLE	: minion_uart_signal_enable = val; break;
     case MINION_UART_PRESENT_STATE	: minion_uart_present_state = val; break;
@@ -347,8 +365,6 @@ static void minion_uart_write(struct minion_uart_host *host, u32 val, int reg)
 
 static u32 minion_uart_read(struct minion_uart_host *host, int reg)
 {
-  int cnt;
-  unsigned cmd, arg, len;
   switch (reg)
     {
     case MINION_UART_RESPONSE          : return response[0];
@@ -375,7 +391,7 @@ static u32 minion_uart_read(struct minion_uart_host *host, int reg)
     case MINION_UART_CAPABILITIES      : return MINION_UART_CAN_VDD_330;
     case MINION_UART_SOFTWARE_RESET : return 0;
     case MINION_UART_HOST_CONTROL: return minion_uart_host_control;
-    case MINION_UART_CLOCK_CONTROL: return minion_uart_clock_control|MINION_UART_CLOCK_INT_STABLE;
+    case MINION_UART_CLOCK_CONTROL: return (minion_uart_clock_div << MINION_UART_DIVIDER_SHIFT)|MINION_UART_CLOCK_INT_STABLE;
     case MINION_UART_BUFFER : return 0;
     default: printf("unknown(%d)", reg);
     }
@@ -449,7 +465,10 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 
 	/* Timeout unit - ms */
 	static unsigned int cmd_timeout = MINION_UART_CMD_DEFAULT_TIMEOUT;
-
+	/* experimental speedup (?)
+	if (cmd->cmdidx == MMC_CMD_SET_BLOCKLEN && minion_old_blocklen == cmd->cmdarg)
+	  return 0;
+	*/
 	minion_uart_write(host, MINION_UART_INT_ALL_MASK, MINION_UART_INT_STATUS);
 	mask = MINION_UART_CMD_INHIBIT | MINION_UART_DATA_INHIBIT;
 
@@ -500,7 +519,7 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 
 	/* Set Transfer mode regarding to data flag */
 	if (data != 0) {
-		minion_uart_write(host, 0xe, MINION_UART_TIMEOUT_CONTROL);
+		minion_uart_write(host, 500, MINION_UART_TIMEOUT_CONTROL);
 		mode = MINION_UART_TRNS_BLK_CNT_EN;
 		if (data->blocks > 1)
 			mode |= MINION_UART_TRNS_MULTI;
@@ -509,9 +528,9 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 			mode |= MINION_UART_TRNS_READ;
 
 		if (data->flags == MMC_DATA_READ)
-			host->start_addr = data->dest;
+		  host->start_addr = (uint32_t *)(data->dest);
 		else
-			host->start_addr = data->src;
+		  host->start_addr = (uint32_t *)(data->src);
 
 		minion_uart_write(host, data->blocksize, MINION_UART_BLOCK_SIZE);
 		minion_uart_write(host, data->blocks, MINION_UART_BLOCK_COUNT);
@@ -632,8 +651,6 @@ static int minion_uart_set_clock(struct mmc *mmc, unsigned int clock)
 		host->set_clock(host->index, div);
 
 	clk |= (div & MINION_UART_DIV_MASK) << MINION_UART_DIVIDER_SHIFT;
-	clk |= ((div & MINION_UART_DIV_HI_MASK) >> MINION_UART_DIV_MASK_LEN)
-		<< MINION_UART_DIVIDER_HI_SHIFT;
 	clk |= MINION_UART_CLOCK_INT_EN;
 	minion_uart_write(host, clk, MINION_UART_CLOCK_CONTROL);
 
