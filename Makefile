@@ -577,7 +577,7 @@ endif
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os
 else
-KBUILD_CFLAGS	+= -O2
+KBUILD_CFLAGS	+= -O
 endif
 
 KBUILD_CFLAGS += $(call cc-option,-fno-stack-protector)
@@ -702,6 +702,10 @@ u-boot-main := $(libs-y)
 
 ifeq ($(CONFIG_MINION_SDHCI),y)
 PLATFORM_LIBS +=-L/usr/lib/x86_64-linux-gnu -lstdc++ drivers/mmc/sdcard/obj_dir/sim_main.o drivers/mmc/sdcard/obj_dir/verilated.o drivers/mmc/sdcard/obj_dir/Vusimv_top__ALL.a
+endif
+
+ifeq ($(CONFIG_MINION_UART),y)
+PLATFORM_LIBS += -L../minion_subsystem/software/tester -ledcl -lpthread -ldl -lbfd -lstdc++
 endif
 
 # Add GCC lib

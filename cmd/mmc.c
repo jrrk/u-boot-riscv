@@ -773,6 +773,16 @@ static int do_mmc_debug(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[
 
 	minion_sd_debug();
 }
+
+static int do_mmc_loadelf(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+{
+	int dev;
+	struct mmc *mmc;
+
+	if (argc != 2) return CMD_RET_USAGE;
+
+	minion_sd_loadelf(argv[1]);
+}
 #endif
 
 static cmd_tbl_t cmd_mmc[] = {
@@ -787,6 +797,7 @@ static cmd_tbl_t cmd_mmc[] = {
 	U_BOOT_CMD_MKENT(hwpartition, 28, 0, do_mmc_hwpartition, "", ""),
 #ifdef CONFIG_MINION_UART
 	U_BOOT_CMD_MKENT(debug, 1, 0, do_mmc_debug, "", ""),
+	U_BOOT_CMD_MKENT(loadelf, 2, 0, do_mmc_loadelf, "", ""),
 #endif
 #ifdef CONFIG_SUPPORT_EMMC_BOOT
 	U_BOOT_CMD_MKENT(bootbus, 5, 0, do_mmc_bootbus, "", ""),

@@ -61,7 +61,7 @@ int fs_size(const char *filename, loff_t *size);
  * @actread: Returns the actual number of bytes read
  * @return 0 if ok with valid *actread, -1 on error conditions
  */
-int fs_read(const char *filename, ulong addr, loff_t offset, loff_t len,
+int fs_read(const char *filename, void *addr, loff_t offset, loff_t len,
 	    loff_t *actread);
 
 /*
@@ -75,7 +75,7 @@ int fs_read(const char *filename, ulong addr, loff_t offset, loff_t len,
  * @actwrite: Returns the actual number of bytes written
  * @return 0 if ok with valid *actwrite, -1 on error conditions
  */
-int fs_write(const char *filename, ulong addr, loff_t offset, loff_t len,
+int fs_write(const char *filename, void *addr, loff_t offset, loff_t len,
 	     loff_t *actwrite);
 
 /*

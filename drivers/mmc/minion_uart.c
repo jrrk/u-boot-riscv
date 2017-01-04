@@ -273,7 +273,6 @@ static int minion_uart_block_count;
 static int minion_uart_transfer_mode;
 static int minion_uart_block_size;
 static int minion_uart_command;
-static int minion_old_blocklen;
 
 static unsigned setting, response[10], iobase[512];
 
@@ -321,7 +320,6 @@ static void minion_uart_write(struct minion_uart_host *host, u32 val, int reg)
 	  sd_blksize(minion_uart_block_size);
 	  if (minion_uart_host_control & MINION_UART_CTRL_4BITBUS) setting |= 0x20;
 	}
-      log_printf("sd_transaction(%d,0x%.8X,0x%X,resp);\n", minion_uart_command, minion_uart_argument, setting);
       len = sd_transaction(minion_uart_command, minion_uart_argument, setting, response, iobase, maxio);
       if (minion_uart_transfer_mode & MINION_UART_TRNS_READ)
 	{
@@ -340,7 +338,6 @@ static void minion_uart_write(struct minion_uart_host *host, u32 val, int reg)
       minion_uart_software_reset = val;
       minion_uart_timeout_control = 1000; 
       minion_uart_transfer_mode = 0;
-      open_handle();
       break;
     case MINION_UART_CLOCK_CONTROL	:
       minion_uart_clock_div = val >> MINION_UART_DIVIDER_SHIFT;
@@ -372,19 +369,7 @@ static u32 minion_uart_read(struct minion_uart_host *host, int reg)
     case MINION_UART_RESPONSE+8        : return response[2];
     case MINION_UART_RESPONSE+12       : return response[3];
     case MINION_UART_INT_STATUS	:
-      /*
-      cnt = fionread(&cmd, &arg, &len, response);
-      if (cnt >= 11)
-	{
-	  assert(cmd==minion_uart_command);
-	  assert(arg==minion_uart_argument);
-	  assert(len==setting);
-      */
 	  return response[4] < minion_uart_timeout_control ? MINION_UART_INT_RESPONSE|MINION_UART_INT_DATA_AVAIL : MINION_UART_INT_ERROR;
-      /*
-	}
-      return 0;
-      */
     case MINION_UART_INT_ENABLE	: return minion_uart_int_enable;
     case MINION_UART_PRESENT_STATE	: return MINION_UART_DATA_AVAILABLE;
     case MINION_UART_HOST_VERSION	: return minion_uart_host_version;
@@ -465,10 +450,7 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 
 	/* Timeout unit - ms */
 	static unsigned int cmd_timeout = MINION_UART_CMD_DEFAULT_TIMEOUT;
-	/* experimental speedup (?)
-	if (cmd->cmdidx == MMC_CMD_SET_BLOCKLEN && minion_old_blocklen == cmd->cmdarg)
-	  return 0;
-	*/
+
 	minion_uart_write(host, MINION_UART_INT_ALL_MASK, MINION_UART_INT_STATUS);
 	mask = MINION_UART_CMD_INHIBIT | MINION_UART_DATA_INHIBIT;
 

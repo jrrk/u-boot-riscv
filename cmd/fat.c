@@ -15,6 +15,7 @@
 #include <ata.h>
 #include <asm/io.h>
 #include <mapmem.h>
+#include <memalign.h>
 #include <part.h>
 #include <fat.h>
 #include <fs.h>
@@ -51,6 +52,43 @@ U_BOOT_CMD(
 	"      If either 'pos' or 'bytes' are not aligned to\n"
 	"      ARCH_DMA_MINALIGN then a misaligned buffer warning will\n"
 	"      be printed and performance will suffer for the load."
+);
+
+int do_fat_type (cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+{
+  const char *filename = argv[3];
+  loff_t len_read;
+  int i, ret;
+  int fstype = FS_TYPE_FAT;
+  void *addr;
+  
+  if (argc != 4)
+    return CMD_RET_USAGE;
+    
+  addr = ((ulong)(malloc(512+ARCH_DMA_MINALIGN)) | (ARCH_DMA_MINALIGN - 1)) + 1;
+
+  printf("addr = %p\n", addr);
+  
+  if (fs_set_blk_dev(argv[1], argv[2], fstype))
+    return 1;
+  
+  ret = fs_read(filename, addr, 0, 512, &len_read);
+  if (ret < 0)
+    return 1;
+  
+  for (i = 0; i < len_read; i++) putc(((char *)addr)[i]);
+
+  putc('\n');
+  return 0;
+}
+
+
+U_BOOT_CMD(
+	fattype,	7,	0,	do_fat_type,
+	"type text file from a dos filesystem",
+	"<interface> [<dev[:part]> [<addr> [<filename> [bytes [pos]]]]]\n"
+	"    - type text file 'filename' from 'dev' on 'interface'\n"
+	"      from dos filesystem.\n"
 );
 
 static int do_fat_ls(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])

@@ -135,4 +135,10 @@ int mmc_switch_part(struct mmc *mmc, unsigned int part_num);
  */
 int mmc_switch(struct mmc *mmc, u8 set, u8 index, u8 value);
 
+#ifdef CONFIG_MINION_UART
+
+int minion_sd_loadelf(const char *elf);
+
+#endif
+
 #endif /* _MMC_PRIVATE_H_ */
