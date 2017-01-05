@@ -11,23 +11,14 @@ typedef long unsigned int size_t;
 
 #endif
 #include <stdarg.h>
-#include "os.h"
+#include <common.h>
+#include <dm.h>
+#include <fdtdec.h>
+#include <libfdt.h>
+#include <malloc.h>
+#include <errno.h>
+#include <mmc.h>
 #include "minion_lib.h"
-
-void myexit(int status)
-{
-  exit(status);
-}
-
-void myperror(const char *s)
-{
-  perror(s);
-}
-
-void myassert(int cond)
-{
-  ((cond) ? (void) (0) : __assert_fail ("cond", "drivers/mmc/minion_helper.c", 77, __PRETTY_FUNCTION__));
-}
 
 volatile unsigned int * const led_base = (volatile unsigned int*)(7<<20);
 volatile unsigned int * const sd_base = (volatile unsigned int*)(6<<20);
@@ -87,7 +78,7 @@ unsigned queue_read(volatile unsigned int * const sd_ptr)
    return tmp.val;
  }
 
-void o_led(unsigned int data)
+void my_led(unsigned int data)
 {
   queue_write(led_base, data, 1);  
 }
@@ -184,27 +175,27 @@ int sd_transaction(int cmd, unsigned arg, unsigned setting, unsigned resp[], uns
     int i, mask = setting > 7 ? 0x500 : 0x100;
     sd_cmd(cmd,arg);
     sd_cmd_setting(setting);
-    o_led(2);
+    my_led(2);
     mysleep(10);
     sd_cmd_start(1);
-    o_led(3);
+    my_led(3);
     while ((sd_stat(0) & mask) != mask);
-    o_led(4);
+    my_led(4);
     mysleep(10);
     for (i = 10; i--; ) resp[i] = sd_resp(i);
     if ((setting > 7) || !cmd)
       cnt = sd_flush(iobuf, cmd ? iobuflen : 0, resp[9]);
-    o_led(5);
+    my_led(5);
     sd_cmd_start(0);
     sd_cmd_setting(0);
     while ((sd_stat(0) & mask) != 0);
-    o_led(6);
+    my_led(6);
     return cnt;
   }
 
 void board_mmc_power_init(void)
 {
-  o_led(1);
+  my_led(1);
   sd_clk_div(200);
   sd_reset(0,1,0,0);
   mysleep(74);
@@ -215,35 +206,6 @@ void board_mmc_power_init(void)
   mysleep(10);
   sd_reset(0,1,1,1);
   mysleep(10);
-}
-
-int echo = 0;
-
-void myputchar(char ch)
-{
-   os_putc(ch);
-}
-
-void myputs(const char *str)
-{
-  while (*str)
-    {
-      myputchar(*str++);
-    }
-}
-
-void myputn(unsigned n)
-{
-  if (n > 9) myputn(n / 10);
-  myputchar(n%10 + '0');
-}
-
-void myputhex(unsigned n, unsigned width)
-{
-  if (width > 1) myputhex(n >> 4, width-1);
-  n &= 15;
-  if (n > 9) myputchar(n + 'A' - 10);
-  else myputchar(n + '0');
 }
 
 const char *scan(const char *start, size_t *data, int base)
@@ -268,8 +230,6 @@ size_t mystrtol(const char *nptr, char **endptr, int base)
   return data;
 }
 
-char ucmd[100];
-
 unsigned sd_transaction_v(int sdcmd, unsigned arg, unsigned setting)
 {
   int i;
@@ -293,22 +253,12 @@ unsigned sd_transaction_v(int sdcmd, unsigned arg, unsigned setting)
   return resp[0] & 0xFFFF0000U;
 }
 
-int minion_sd_loadelf(const char *elf)
-{
-  edcl_loadelf(elf);
-  return 0;
-}
-
-int minion_sd_debug(void)
+void minion_dispatch(const char *ucmd)
 {
   int i, rca, busy;
-  myputs("Hello\n");
-  do {
-    size_t addr, addr2, data, sdcmd, arg, setting;
-    const char *nxt;
-    myputchar('\n');
-    cli_readline_into_buffer("dbg> ", ucmd, 0);
-    switch(*ucmd)
+  size_t addr, addr2, data, sdcmd, arg, setting;
+  const char *nxt;
+  switch(*ucmd)
       {
       case 4:
 	break;
@@ -410,8 +360,157 @@ int minion_sd_debug(void)
 	break;
       default: myputs("\nunknown command");
       }
-	
-  } while (*ucmd != 'q');
-  myputs("\nGoodbye\n");
+}
+
+static int minion_uart_host_control;
+static int minion_uart_ctrl_dma;
+static int minion_uart_argument;
+static int minion_uart_ctrl_cd;
+static int minion_uart_power_control;
+static int minion_uart_power_180;
+static int minion_uart_block_gap;
+static int minion_uart_wake_up;
+static int minion_uart_timeout_control;
+static int minion_uart_software_reset;
+static int minion_uart_clock_div;
+static int minion_uart_int_status;
+static int minion_uart_int_enable;
+static int minion_uart_signal_enable;
+static int minion_uart_present_state;
+static int minion_uart_max_current;
+static int minion_uart_set_acmd12;
+static int minion_uart_set_int;
+static int minion_uart_slot_int;
+static int minion_uart_host_version;
+static int minion_uart_block_count;
+static int minion_uart_transfer_mode;
+static int minion_uart_block_size;
+static int minion_uart_command;
+
+static unsigned response[10], iobase[512];
+
+enum {maxio=sizeof(iobase)/sizeof(*iobase)};
+
+void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg)
+{  
+  int i, len;
+  unsigned setting;
+  switch (reg)
+    {
+    case MINION_UART_BLOCK_COUNT	: minion_uart_block_count = val; break;
+    case MINION_UART_BLOCK_SIZE	        : minion_uart_block_size = val; break;
+    case MINION_UART_HOST_CONTROL	:
+      minion_uart_host_control = val;
+      printf("host_control = %d\n", val);
+      if (val & MINION_UART_CTRL_4BITBUS)
+	printf("4-bit bus enabled\n");
+      else
+	printf("4-bit bus disabled\n");
+      break;
+    case MINION_UART_CTRL_DMA_MASK	: minion_uart_ctrl_dma = val; break;
+    case MINION_UART_ARGUMENT	        : minion_uart_argument = val; break;
+    case MINION_UART_TRANSFER_MODE	: minion_uart_transfer_mode = val; break;
+
+    case MINION_UART_CTRL_CD_TEST_INS   : minion_uart_ctrl_cd = val; break;
+    case MINION_UART_CTRL_CD_TEST	: minion_uart_ctrl_cd = val; break;
+    case MINION_UART_POWER_CONTROL	:
+      minion_uart_power_control = val;
+      printf("power control = %d\n", val);
+      break;
+    case MINION_UART_POWER_180	        : minion_uart_power_180 = val; break;
+    case MINION_UART_COMMAND	        :
+      minion_uart_command = val >> 8;
+      switch(val & MINION_UART_CMD_RESP_MASK)
+	{
+	case MINION_UART_CMD_RESP_NONE: setting = 0; break;
+	case MINION_UART_CMD_RESP_SHORT: setting = 1; break;
+	case MINION_UART_CMD_RESP_SHORT_BUSY: setting = 1; break;
+	case MINION_UART_CMD_RESP_LONG: setting = 3; break;
+	default: setting = 0; // to keep optimizer happy
+	}
+      if (minion_uart_transfer_mode & MINION_UART_TRNS_READ)
+	{
+	  setting |= 0x14;
+	  sd_blkcnt(minion_uart_block_count);
+	  sd_blksize(minion_uart_block_size);
+	  if (minion_uart_host_control & MINION_UART_CTRL_4BITBUS) setting |= 0x20;
+	}
+      len = sd_transaction(minion_uart_command, minion_uart_argument, setting, response, iobase, maxio);
+      if (minion_uart_transfer_mode & MINION_UART_TRNS_READ)
+	{
+	  for (i = 0; i < len; i++)
+	    (host->start_addr)[i] = __be32_to_cpu(iobase[i]);
+	}
+      minion_uart_int_status = MINION_UART_INT_RESPONSE;
+      break;
+    case MINION_UART_BLOCK_GAP_CONTROL	: minion_uart_block_gap = val; break;
+    case MINION_UART_WAKE_UP_CONTROL	: minion_uart_wake_up = val; break;
+    case MINION_UART_TIMEOUT_CONTROL	:
+      minion_uart_timeout_control = val;
+      sd_timeout(minion_uart_timeout_control);
+      break;
+    case MINION_UART_SOFTWARE_RESET	:
+      minion_uart_software_reset = val;
+      minion_uart_timeout_control = 1000; 
+      minion_uart_transfer_mode = 0;
+      break;
+    case MINION_UART_CLOCK_CONTROL	:
+      minion_uart_clock_div = val >> MINION_UART_DIVIDER_SHIFT;
+      printf("Clock divider = %d\n", minion_uart_clock_div);
+      if (val & MINION_UART_CLOCK_CARD_EN) printf("Card clock enabled\n"); else printf("Card clock disabled\n");
+      break;
+    case MINION_UART_INT_STATUS	:
+      minion_uart_int_status = val;
+      minion_uart_transfer_mode = 0;
+      break;
+    case MINION_UART_INT_ENABLE	: minion_uart_int_enable = val; break;
+    case MINION_UART_SIGNAL_ENABLE	: minion_uart_signal_enable = val; break;
+    case MINION_UART_PRESENT_STATE	: minion_uart_present_state = val; break;
+    case MINION_UART_MAX_CURRENT	: minion_uart_max_current = val; break;
+    case MINION_UART_SET_ACMD12_ERROR	: minion_uart_set_acmd12 = val; break;
+    case MINION_UART_SET_INT_ERROR	: minion_uart_set_int = val; break;
+    case MINION_UART_SLOT_INT_STATUS	: minion_uart_slot_int = val; break;
+    case MINION_UART_HOST_VERSION	: minion_uart_host_version = val; break;
+    default: printf("unknown(%d)", reg);
+    }
+}
+
+uint32_t minion_uart_read(struct minion_uart_host *host, int reg)
+{
+  switch (reg)
+    {
+    case MINION_UART_RESPONSE          : return response[0];
+    case MINION_UART_RESPONSE+4        : return response[1];
+    case MINION_UART_RESPONSE+8        : return response[2];
+    case MINION_UART_RESPONSE+12       : return response[3];
+    case MINION_UART_INT_STATUS	:
+	  return response[4] < minion_uart_timeout_control ? MINION_UART_INT_RESPONSE|MINION_UART_INT_DATA_AVAIL : MINION_UART_INT_ERROR;
+    case MINION_UART_INT_ENABLE	: return minion_uart_int_enable;
+    case MINION_UART_PRESENT_STATE	: return MINION_UART_DATA_AVAILABLE;
+    case MINION_UART_HOST_VERSION	: return minion_uart_host_version;
+    case MINION_UART_CAPABILITIES      : return MINION_UART_CAN_VDD_330;
+    case MINION_UART_SOFTWARE_RESET : return 0;
+    case MINION_UART_HOST_CONTROL: return minion_uart_host_control;
+    case MINION_UART_CLOCK_CONTROL: return (minion_uart_clock_div << MINION_UART_DIVIDER_SHIFT)|MINION_UART_CLOCK_INT_STABLE;
+    case MINION_UART_BUFFER : return 0;
+    default: printf("unknown(%d)", reg);
+    }
   return 0;
+}
+
+void minion_uart_cmd_done(struct minion_uart_host *host, uint cmd_resp_type, uint cmd_response[4])
+{
+	int i;
+	if (cmd_resp_type & MMC_RSP_136) {
+		/* CRC is stripped so we need to do some shifting. */
+		for (i = 0; i < 4; i++) {
+			cmd_response[i] = minion_uart_read(host,
+					MINION_UART_RESPONSE + (3-i)*4) << 8;
+			if (i != 3)
+				cmd_response[i] |= minion_uart_read(host,
+						MINION_UART_RESPONSE + (2-i)*4) >> 24;
+		}
+	} else {
+		cmd_response[0] = minion_uart_read(host, MINION_UART_RESPONSE);
+	}
 }

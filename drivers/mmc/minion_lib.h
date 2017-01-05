@@ -57,7 +57,8 @@ void __assert_fail (const char *__assertion, const char *__file, unsigned int __
 #define TCIOFLUSH       2
 
 // MINION_LIB APIs
-extern void puts (const char *);
+extern int echo;
+void myputhex(unsigned n, unsigned width);
 extern int printf (const char *, ...);
 extern void uart_init (void);
 extern void uart_send (uint8_t);
@@ -109,4 +110,242 @@ extern volatile unsigned int * const sd_base;
   int edcl_read(uint64_t addr, int bytes, uint8_t *obuf);
   int edcl_write(uint64_t addr, int bytes, uint8_t *ibuf);
 
+/*
+ * Controller registers
+ */
+
+#define MINION_UART_DMA_ADDRESS	0x00
+
+#define MINION_UART_BLOCK_SIZE	0x04
+
+#define MINION_UART_BLOCK_COUNT	0x06
+
+#define MINION_UART_ARGUMENT		0x08
+
+#define MINION_UART_TRANSFER_MODE	0x0C
+#define  MINION_UART_TRNS_DMA		0x01
+#define  MINION_UART_TRNS_BLK_CNT_EN	0x02
+#define  MINION_UART_TRNS_ACMD12	0x04
+#define  MINION_UART_TRNS_READ	0x10
+#define  MINION_UART_TRNS_MULTI	0x20
+
+#define MINION_UART_COMMAND		0x0E
+#define  MINION_UART_CMD_RESP_MASK	0x03
+#define  MINION_UART_CMD_CRC		0x08
+#define  MINION_UART_CMD_INDEX	0x10
+#define  MINION_UART_CMD_DATA		0x20
+#define  MINION_UART_CMD_ABORTCMD	0xC0
+
+#define  MINION_UART_CMD_RESP_NONE	0x00
+#define  MINION_UART_CMD_RESP_LONG	0x01
+#define  MINION_UART_CMD_RESP_SHORT	0x02
+#define  MINION_UART_CMD_RESP_SHORT_BUSY 0x03
+
+#define MINION_UART_MAKE_CMD(c, f) (((c & 0xff) << 8) | (f & 0xff))
+#define MINION_UART_GET_CMD(c) ((c>>8) & 0x3f)
+
+#define MINION_UART_RESPONSE		0x10
+
+#define MINION_UART_BUFFER		0x20
+
+#define MINION_UART_PRESENT_STATE	0x24
+#define  MINION_UART_CMD_INHIBIT	0x00000001
+#define  MINION_UART_DATA_INHIBIT	0x00000002
+#define  MINION_UART_DOING_WRITE	0x00000100
+#define  MINION_UART_DOING_READ	0x00000200
+#define  MINION_UART_SPACE_AVAILABLE	0x00000400
+#define  MINION_UART_DATA_AVAILABLE	0x00000800
+#define  MINION_UART_CARD_PRESENT	0x00010000
+#define  MINION_UART_CARD_STATE_STABLE	0x00020000
+#define  MINION_UART_CARD_DETECT_PIN_LEVEL	0x00040000
+#define  MINION_UART_WRITE_PROTECT	0x00080000
+
+#define MINION_UART_HOST_CONTROL	0x28
+#define  MINION_UART_POWER_ON		0x01
+#define  MINION_UART_CTRL_LED		0x01
+#define  MINION_UART_CTRL_4BITBUS	0x02
+#define  MINION_UART_CTRL_HISPD	0x04
+#define  MINION_UART_CTRL_DMA_MASK	0x18
+#define   MINION_UART_CTRL_SDMA	0x00
+#define   MINION_UART_CTRL_ADMA1	0x08
+#define   MINION_UART_CTRL_ADMA32	0x10
+#define   MINION_UART_CTRL_ADMA64	0x18
+#define  MINION_UART_CTRL_8BITBUS	0x20
+#define  MINION_UART_CTRL_CD_TEST_INS	0x40
+#define  MINION_UART_CTRL_CD_TEST	0x80
+
+#define MINION_UART_POWER_CONTROL	0x29
+#define  MINION_UART_POWER_180	0x0A
+#define  MINION_UART_POWER_300	0x0C
+#define  MINION_UART_POWER_330	0x0E
+
+#define MINION_UART_BLOCK_GAP_CONTROL	0x2A
+#define MINION_UART_WAKE_UP_CONTROL	0x2B
+#define MINION_UART_TIMEOUT_CONTROL	0x2E
+#define MINION_UART_SOFTWARE_RESET	0x2F
+
+#define  MINION_UART_WAKE_ON_INT	0x01
+#define  MINION_UART_WAKE_ON_INSERT	0x02
+#define  MINION_UART_WAKE_ON_REMOVE	0x04
+
+#define MINION_UART_CLOCK_CONTROL	0x2C
+#define  MINION_UART_DIVIDER_SHIFT	8
+#define  MINION_UART_DIV_MASK	0x3FF
+#define  MINION_UART_DIV_MASK_LEN	8
+#define  MINION_UART_PROG_CLOCK_MODE  0x0020
+#define  MINION_UART_CLOCK_CARD_EN	0x0004
+#define  MINION_UART_CLOCK_INT_STABLE	0x0002
+#define  MINION_UART_CLOCK_INT_EN	0x0001
+
+#define  MINION_UART_RESET_ALL	0x01
+#define  MINION_UART_RESET_CMD	0x02
+#define  MINION_UART_RESET_DATA	0x04
+
+#define MINION_UART_INT_STATUS	0x30
+#define MINION_UART_INT_ENABLE	0x34
+#define MINION_UART_SIGNAL_ENABLE	0x38
+#define  MINION_UART_INT_RESPONSE	0x00000001
+#define  MINION_UART_INT_DATA_END	0x00000002
+#define  MINION_UART_INT_DMA_END	0x00000008
+#define  MINION_UART_INT_SPACE_AVAIL	0x00000010
+#define  MINION_UART_INT_DATA_AVAIL	0x00000020
+#define  MINION_UART_INT_CARD_INSERT	0x00000040
+#define  MINION_UART_INT_CARD_REMOVE	0x00000080
+#define  MINION_UART_INT_CARD_INT	0x00000100
+#define  MINION_UART_INT_ERROR	0x00008000
+#define  MINION_UART_INT_TIMEOUT	0x00010000
+#define  MINION_UART_INT_CRC		0x00020000
+#define  MINION_UART_INT_END_BIT	0x00040000
+#define  MINION_UART_INT_INDEX	0x00080000
+#define  MINION_UART_INT_DATA_TIMEOUT	0x00100000
+#define  MINION_UART_INT_DATA_CRC	0x00200000
+#define  MINION_UART_INT_DATA_END_BIT	0x00400000
+#define  MINION_UART_INT_BUS_POWER	0x00800000
+#define  MINION_UART_INT_ACMD12ERR	0x01000000
+#define  MINION_UART_INT_ADMA_ERROR	0x02000000
+
+#define  MINION_UART_INT_NORMAL_MASK	0x00007FFF
+#define  MINION_UART_INT_ERROR_MASK	0xFFFF8000
+
+#define  MINION_UART_INT_CMD_MASK	(MINION_UART_INT_RESPONSE | MINION_UART_INT_TIMEOUT | \
+		MINION_UART_INT_CRC | MINION_UART_INT_END_BIT | MINION_UART_INT_INDEX)
+#define  MINION_UART_INT_DATA_MASK	(MINION_UART_INT_DATA_END | MINION_UART_INT_DMA_END | \
+		MINION_UART_INT_DATA_AVAIL | MINION_UART_INT_SPACE_AVAIL | \
+		MINION_UART_INT_DATA_TIMEOUT | MINION_UART_INT_DATA_CRC | \
+		MINION_UART_INT_DATA_END_BIT | MINION_UART_INT_ADMA_ERROR)
+#define MINION_UART_INT_ALL_MASK	((unsigned int)-1)
+
+#define MINION_UART_ACMD12_ERR	0x3C
+
+/* 3E-3F reserved */
+
+#define MINION_UART_CAPABILITIES	0x40
+#define  MINION_UART_TIMEOUT_CLK_MASK	0x0000003F
+#define  MINION_UART_TIMEOUT_CLK_SHIFT 0
+#define  MINION_UART_TIMEOUT_CLK_UNIT	0x00000080
+#define  MINION_UART_CLOCK_BASE_MASK	0x00003F00
+#define  MINION_UART_CLOCK_V3_BASE_MASK	0x0000FF00
+#define  MINION_UART_CLOCK_BASE_SHIFT	8
+#define  MINION_UART_MAX_BLOCK_MASK	0x00030000
+#define  MINION_UART_MAX_BLOCK_SHIFT  16
+#define  MINION_UART_CAN_DO_8BIT	0x00040000
+#define  MINION_UART_CAN_DO_ADMA2	0x00080000
+#define  MINION_UART_CAN_DO_ADMA1	0x00100000
+#define  MINION_UART_CAN_DO_HISPD	0x00200000
+#define  MINION_UART_CAN_DO_SDMA	0x00400000
+#define  MINION_UART_CAN_VDD_330	0x01000000
+#define  MINION_UART_CAN_VDD_300	0x02000000
+#define  MINION_UART_CAN_VDD_180	0x04000000
+#define  MINION_UART_CAN_64BIT	0x10000000
+
+#define MINION_UART_CAPABILITIES_1	0x44
+#define  MINION_UART_CLOCK_MUL_MASK	0x00FF0000
+#define  MINION_UART_CLOCK_MUL_SHIFT	16
+
+#define MINION_UART_MAX_CURRENT	0x48
+
+/* 4C-4F reserved for more max current */
+
+#define MINION_UART_SET_ACMD12_ERROR	0x50
+#define MINION_UART_SET_INT_ERROR	0x52
+
+#define MINION_UART_ADMA_ERROR	0x54
+
+/* 55-57 reserved */
+
+#define MINION_UART_ADMA_ADDRESS	0x58
+
+/* 60-FB reserved */
+
+#define MINION_UART_SLOT_INT_STATUS	0xFC
+
+#define MINION_UART_HOST_VERSION	0xFE
+#define  MINION_UART_VENDOR_VER_MASK	0xFF00
+#define  MINION_UART_VENDOR_VER_SHIFT	8
+#define  MINION_UART_SPEC_VER_MASK	0x00FF
+#define  MINION_UART_SPEC_VER_SHIFT	0
+#define   MINION_UART_SPEC_100	0
+#define   MINION_UART_SPEC_200	1
+#define   MINION_UART_SPEC_300	2
+
+#define MINION_UART_GET_VERSION(x) (x->version & MINION_UART_SPEC_VER_MASK)
+
+/*
+ * End of controller registers.
+ */
+
+#define MINION_UART_MAX_DIV_SPEC_200	256
+#define MINION_UART_MAX_DIV_SPEC_300	2046
+
+struct minion_uart_host {
+	const char *name;
+	unsigned int quirks;
+	unsigned int host_caps;
+	unsigned int version;
+	unsigned int clk_mul;   /* Clock Multiplier value */
+	unsigned int clock;
+	struct mmc *mmc;
+	const struct minion_uart_ops *ops;
+	int index;
+	int bus_width;
+	void (*set_control_reg)(struct minion_uart_host *host);
+	void (*set_clock)(int dev_index, unsigned int div);
+	uint	voltages;
+        uint32_t *start_addr;
+};
+
+void myputchar(char ch);
+void myputs(const char *str);
+void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg);
+uint32_t minion_uart_read(struct minion_uart_host *host, int reg);
+void minion_uart_reset(struct minion_uart_host *host, uint8_t mask);
+void minion_uart_cmd_done(struct minion_uart_host *host, uint resp_type, uint cmd_response[]);
+void minion_dispatch(const char *ucmd);
+
+/*
+ * Host SDMA buffer boundary. Valid values from 4K to 512K in powers of 2.
+ */
+#define MINION_UART_DEFAULT_BOUNDARY_SIZE	(512 * 1024)
+#define MINION_UART_DEFAULT_BOUNDARY_ARG	(7)
+struct minion_uart_ops {
+#ifdef CONFIG_MMC_MINION_UART_IO_ACCESSORS
+	uint32_t             (*read_l)(struct minion_uart_host *host, int reg);
+	uint16_t             (*read_w)(struct minion_uart_host *host, int reg);
+	uint8_t              (*read_b)(struct minion_uart_host *host, int reg);
+	void            (*write_l)(struct minion_uart_host *host, uint32_t val, int reg);
+	void            (*write_w)(struct minion_uart_host *host, uint16_t val, int reg);
+	void            (*write_b)(struct minion_uart_host *host, uint8_t val, int reg);
+#endif
+};
+
+/*
+ * No command will be sent by driver if card is busy, so driver must wait
+ * for card ready state.
+ * Every time when card is busy after timeout then (last) timeout value will be
+ * increased twice but only if it doesn't exceed global defined maximum.
+ * Each function call will use last timeout value.
+ */
+#define MINION_UART_CMD_MAX_TIMEOUT			3200
+#define MINION_UART_CMD_DEFAULT_TIMEOUT		100
+#define MINION_UART_READ_STATUS_TIMEOUT		1000
 #endif
