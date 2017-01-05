@@ -106,21 +106,60 @@ void minion_uart_reset(struct minion_uart_host *host, u8 mask)
 	}
 }
 
-void minion_uart_cmd_done(struct minion_uart_host *host, uint cmd_resp_type, uint cmd_response[4])
+void minion_uart_cmd_done(
+			  struct minion_uart_host *host,
+			  uint cmd_resp_type,
+			  uint cmd_response[4],
+			  u32 mode,
+			  int cmd,
+			  struct mmc_data *data)
 {
-	int i;
-	if (cmd_resp_type & MMC_RSP_136) {
-		/* CRC is stripped so we need to do some shifting. */
-		for (i = 0; i < 4; i++) {
-			cmd_response[i] = minion_uart_read(host,
-					MINION_UART_RESPONSE + (3-i)*4) << 8;
-			if (i != 3)
-				cmd_response[i] |= minion_uart_read(host,
-						MINION_UART_RESPONSE + (2-i)*4) >> 24;
-		}
-	} else {
-		cmd_response[0] = minion_uart_read(host, MINION_UART_RESPONSE);
-	}
+  int i, read;
+  if (cmd_resp_type & MMC_RSP_136) {
+    /* CRC is stripped so we need to do some shifting. */
+    for (i = 0; i < 4; i++) {
+      cmd_response[i] = minion_uart_read(host,
+					 MINION_UART_RESPONSE + (3-i)*4) << 8;
+      if (i != 3)
+	cmd_response[i] |= minion_uart_read(host,
+					    MINION_UART_RESPONSE + (2-i)*4) >> 24;
+    }
+  } else {
+    cmd_response[0] = minion_uart_read(host, MINION_UART_RESPONSE);
+  }
+  read = mode & MINION_UART_TRNS_READ;
+#if 0
+  static unsigned iobase[512];
+  enum {maxio=sizeof(iobase)/sizeof(*iobase)};
+  len = sd_transaction_flush(read || !cmd, iobase, cmd ? maxio : 0);
+  if (read)
+    {
+      for (i = 0; i < len; i++)
+	(host->start_addr)[i] = __be32_to_cpu(iobase[i]);
+
+    }
+	
+#else
+  int cnt = 0;
+  int ready = sd_stat(0);
+  int itm, discard = 0;
+  while (1 & ~ready)
+    {
+      rx_write_fifo(0);
+      itm = rx_read_fifo();
+      if (read && (cnt < data->blocksize*data->blocks))
+	(host->start_addr)[cnt++] = itm; else discard++;
+      ready = sd_stat(0);
+    }
+  if (read)
+    {
+      (host->start_addr)[cnt] = 0;
+      for (i = 0; i < cnt; i++)
+	(host->start_addr)[i] = ((host->start_addr)[i] << 24) | ((host->start_addr)[i+1] >> 8);
+      for (i = 0; i < cnt; i++)
+	(host->start_addr)[i] = __be32_to_cpu((host->start_addr)[i]);
+    }      
+#endif      
 }
 
 #ifdef CONFIG_DM_MMC_OPS
@@ -137,7 +176,7 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 	struct minion_uart_host *host = mmc->priv;
 	unsigned int stat = 0;
 	int ret = 0;
-	u32 mask, flags, mode;
+	u32 mask, flags, mode = 0;
 	unsigned int time = 0;
 	int mmc_dev = mmc_get_blk_desc(mmc)->devnum;
 	unsigned start = get_timer(0);
@@ -237,7 +276,7 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 	} while ((stat & mask) != mask);
 
 	if ((stat & (MINION_UART_INT_ERROR | mask)) == mask) {
-	  minion_uart_cmd_done(host, cmd->resp_type, cmd->response);
+	  minion_uart_cmd_done(host, cmd->resp_type, cmd->response, mode, cmd->cmdidx, data);
 		minion_uart_write(host, mask, MINION_UART_INT_STATUS);
 	} else
 		ret = -1;

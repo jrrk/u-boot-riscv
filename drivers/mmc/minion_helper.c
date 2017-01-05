@@ -174,7 +174,7 @@ int sd_flush(unsigned iobuf[], unsigned iobuflen, unsigned trans)
       if (cnt < iobuflen) iobuf[cnt++] = itm; else discard++;
       ready = sd_stat(0);
     }
-  iobuf[cnt] = 0;
+  if (cnt) iobuf[cnt] = 0;
   for (i = 0; i < cnt; i++)
     iobuf[i] = (iobuf[i] << 24) | (iobuf[i+1] >> 8);
 #ifdef CONFIG_MINION_VERBOSE
@@ -475,10 +475,6 @@ void minion_dispatch(const char *ucmd)
       }
 }
 
-static unsigned iobase[512];
-
-enum {maxio=sizeof(iobase)/sizeof(*iobase)};
-
 void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg)
 {  
   int i, len, read, cmd, mask;
@@ -517,13 +513,7 @@ void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg)
       mask = read ? 0x500 : 0x100;
       sd_transaction_start(val);
       sd_transaction_wait(mask);
-      len = sd_transaction_flush(read || !cmd, iobase, cmd ? maxio : 0);
       sd_transaction_finish(mask);
-      if (read)
-	{
-	  for (i = 0; i < len; i++)
-	    (host->start_addr)[i] = __be32_to_cpu(iobase[i]);
-	}
       minion_uart_int_status = MINION_UART_INT_RESPONSE;
       break;
     case MINION_UART_BLOCK_GAP_CONTROL	: minion_uart_block_gap = val; break;
