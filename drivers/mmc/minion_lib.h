@@ -87,16 +87,17 @@ extern void mystatus (void);
 // SDCARD entry point
 void spi_init(void);
 unsigned sd_transaction_v(int sdcmd, unsigned arg, unsigned setting);
-int sd_transaction(int cmd, unsigned arg, unsigned setting, unsigned resp[], unsigned iobuf[], unsigned iobuflen);
+int sd_transaction(unsigned read, unsigned val, unsigned resp[], unsigned iobuf[], unsigned iobuflen);
 void mysleep(int delay);
 unsigned int sd_resp(int);
 unsigned int sd_stat(int);
 void sd_timeout(int d_timeout);
 void sd_blksize(int d_blksize);
 void sd_blkcnt(int d_blkcnt);
+void rx_write_fifo(unsigned int data);
+unsigned int rx_read_fifo(void);
 
 void open_handle(void);
-int fionread(unsigned *cmd, unsigned *arg, unsigned *len, unsigned *resp);
 void uart_printf(const char *fmt, ...);
 void log_printf(const char *fmt, ...);
 void uart_write(volatile unsigned int * const sd_ptr, unsigned val);
