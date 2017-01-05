@@ -128,15 +128,13 @@ void minion_uart_cmd_done(
     cmd_response[0] = minion_uart_read(host, MINION_UART_RESPONSE);
   }
   read = mode & MINION_UART_TRNS_READ;
-#if 0
-  static unsigned iobase[512];
-  enum {maxio=sizeof(iobase)/sizeof(*iobase)};
-  len = sd_transaction_flush(read || !cmd, iobase, cmd ? maxio : 0);
+#if 1
+  int len = 0;
+  if (read || !cmd) len = sd_flush(host->start_addr, cmd ? data->blocksize*data->blocks : 0, sd_resp(9));
   if (read)
     {
       for (i = 0; i < len; i++)
-	(host->start_addr)[i] = __be32_to_cpu(iobase[i]);
-
+	(host->start_addr)[i] = __be32_to_cpu((host->start_addr)[i]);
     }
 	
 #else
@@ -153,9 +151,11 @@ void minion_uart_cmd_done(
     }
   if (read)
     {
+#ifdef LEGACY
       (host->start_addr)[cnt] = 0;
       for (i = 0; i < cnt; i++)
 	(host->start_addr)[i] = ((host->start_addr)[i] << 24) | ((host->start_addr)[i+1] >> 8);
+#endif
       for (i = 0; i < cnt; i++)
 	(host->start_addr)[i] = __be32_to_cpu((host->start_addr)[i]);
     }      

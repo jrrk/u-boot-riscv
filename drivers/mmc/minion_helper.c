@@ -25,7 +25,7 @@ volatile unsigned int * const sd_base = (volatile unsigned int*)(6<<20);
 volatile unsigned int * const sd_stat_ = (volatile unsigned int*)(5<<20);
 volatile unsigned int * const rxfifo_base = (volatile unsigned int*)(4<<20);
 
-enum edcl_mode {edcl_mode_unknown, edcl_mode_read, edcl_mode_write, edcl_max=256};
+enum edcl_mode {edcl_mode_unknown, edcl_mode_read, edcl_mode_write, edcl_mode_block_read, edcl_max=256};
 
 #pragma pack(4)
 
@@ -47,8 +47,8 @@ void queue_flush(void)
   edcl_write(0, edcl_cnt*sizeof(struct etrans), (uint8_t*)edcl_trans);
   edcl_write(edcl_max*sizeof(struct etrans), sizeof(struct etrans), (uint8_t*)&tmp);
   do {
-    edcl_read(0, sizeof(tmp.mode), (uint8_t *)&(tmp.mode));
-  } while (tmp.mode != edcl_cnt);
+    edcl_read(0, sizeof(tmp), (uint8_t *)&(tmp));
+  } while (tmp.ptr);
 }
 
 void queue_write(volatile unsigned int *const sd_ptr, unsigned val, int flush)
@@ -162,6 +162,7 @@ void mysleep(int delay)
 int sd_flush(unsigned iobuf[], unsigned iobuflen, unsigned trans)
 {
   int i, cnt = 0;
+#if 0  
   int ready = sd_stat(0);
   int itm, discard = 0;
   while (1 & ~ready)
@@ -174,13 +175,31 @@ int sd_flush(unsigned iobuf[], unsigned iobuflen, unsigned trans)
       if (cnt < iobuflen) iobuf[cnt++] = itm; else discard++;
       ready = sd_stat(0);
     }
+#else
+   struct etrans tmp;
+   queue_flush();
+   tmp.mode = edcl_mode_block_read;
+   tmp.ptr = rxfifo_base;
+   tmp.val = 1;
+   edcl_write(0, sizeof(struct etrans), (uint8_t*)&tmp);
+   tmp.val = 0xDEADBEEF;
+   edcl_write(edcl_max*sizeof(struct etrans), sizeof(struct etrans), (uint8_t*)&tmp);
+   do {
+    edcl_read(0, sizeof(tmp), (uint8_t *)&tmp);
+  } while (tmp.ptr);
+   cnt = tmp.mode;
+   if (cnt > iobuflen) cnt = iobuflen;
+   if (cnt) edcl_read(sizeof(struct etrans), cnt*sizeof(uint32_t), (uint8_t *)iobuf);
+#endif
+#ifdef LEGACY
   if (cnt) iobuf[cnt] = 0;
   for (i = 0; i < cnt; i++)
     iobuf[i] = (iobuf[i] << 24) | (iobuf[i+1] >> 8);
+#endif
 #ifdef CONFIG_MINION_VERBOSE
   printf("rx_fifo read: %d items (%d transactions, %d discarded)\n", cnt, trans, discard);
 #endif
-  return cnt;
+   return cnt;  
 }
 
 void board_mmc_power_init(void)
@@ -191,7 +210,11 @@ void board_mmc_power_init(void)
   mysleep(74);
   sd_blkcnt(1);
   sd_blksize(1);
+#ifdef LEGACY
   sd_align(3);
+#else
+  sd_align(0);
+#endif  
   sd_timeout(14);
   mysleep(10);
   sd_reset(0,1,1,1);

@@ -325,6 +325,7 @@ void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg);
 uint32_t minion_uart_read(struct minion_uart_host *host, int reg);
 void minion_uart_reset(struct minion_uart_host *host, uint8_t mask);
 //void minion_uart_cmd_done(struct minion_uart_host *host, uint resp_type, uint cmd_response[]);
+int sd_flush(unsigned iobuf[], unsigned iobuflen, unsigned trans);
 void minion_dispatch(const char *ucmd);
 
 /*
