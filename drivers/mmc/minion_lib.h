@@ -96,6 +96,10 @@ void sd_blksize(int d_blksize);
 void sd_blkcnt(int d_blkcnt);
 void rx_write_fifo(unsigned int data);
 unsigned int rx_read_fifo(void);
+void sd_transaction_start(int cmd_flags);
+void sd_transaction_wait(int mask);
+int sd_transaction_flush(int flush, unsigned iobuf[], unsigned iobuflen);
+void sd_transaction_finish(int mask);
 
 void open_handle(void);
 void uart_printf(const char *fmt, ...);

@@ -238,24 +238,6 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 
 	if ((stat & (MINION_UART_INT_ERROR | mask)) == mask) {
 	  minion_uart_cmd_done(host, cmd->resp_type, cmd->response);
-	  if (data != 0)
-	    {
-	      int i, cnt = 0;
-	      int ready = sd_stat(0);
-	      int itm, discard = 0;
-	      while (1 & ~ready)
-		{
-		  rx_write_fifo(0);
-		  itm = rx_read_fifo();
-		  if (cnt < data->blocksize*data->blocks)
-		    (host->start_addr)[cnt++] = itm; else discard++;
-		  ready = sd_stat(0);
-		}
-	      (host->start_addr)[cnt] = 0;
-	      for (i = 0; i < cnt; i++)
-		(host->start_addr)[i] = ((host->start_addr)[i] << 24) | ((host->start_addr)[i+1] >> 8);
-		(host->start_addr)[i] = __be32_to_cpu((host->start_addr)[i]);
-	    }
 		minion_uart_write(host, mask, MINION_UART_INT_STATUS);
 	} else
 		ret = -1;

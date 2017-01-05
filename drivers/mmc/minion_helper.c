@@ -276,11 +276,11 @@ void sd_transaction_wait(int mask)
     mysleep(10);
 }
 
-int sd_transaction_flush(int flush, unsigned resp[], unsigned iobuf[], unsigned iobuflen)
+int sd_transaction_flush(int flush, unsigned iobuf[], unsigned iobuflen)
 {
   int i, cnt = 0;
-  for (i = 10; i--; ) resp[i] = sd_resp(i);
-    if (flush) cnt = sd_flush(iobuf, iobuflen, resp[9]);
+  //  for (i = 10; i--; ) resp[i] = sd_resp(i);
+  if (flush) cnt = sd_flush(iobuf, iobuflen, sd_resp(9));
     return cnt;
 }
 
@@ -318,9 +318,9 @@ int sd_transaction(unsigned read, unsigned val, unsigned resp[], unsigned iobuf[
 #if 0
     for (i = 10; i--; ) resp[i] = sd_resp(i);
     if (read || !cmd)
-      cnt = sd_flush(iobuf, cmd ? iobuflen : 0, resp[9]);
+      cnt = sd_flush(iobuf, cmd ? iobuflen : 0, sd_resp(9));
 #else
-    cnt = sd_transaction_flush(read || !cmd, resp, iobuf, cmd ? iobuflen : 0);
+    cnt = sd_transaction_flush(read || !cmd, iobuf, cmd ? iobuflen : 0);
 #endif    
 #if 0
     my_led(5);
@@ -475,7 +475,7 @@ void minion_dispatch(const char *ucmd)
       }
 }
 
-static unsigned response[10], iobase[512];
+static unsigned iobase[512];
 
 enum {maxio=sizeof(iobase)/sizeof(*iobase)};
 
@@ -515,14 +515,10 @@ void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg)
       cmd = val >> 8;
       read = minion_uart_transfer_mode & MINION_UART_TRNS_READ;
       mask = read ? 0x500 : 0x100;
-#if 0
-      len = sd_transaction(read, val, response, iobase, maxio);
-#else
       sd_transaction_start(val);
       sd_transaction_wait(mask);
-      len = sd_transaction_flush(read || !cmd, response, iobase, cmd ? maxio : 0);
+      len = sd_transaction_flush(read || !cmd, iobase, cmd ? maxio : 0);
       sd_transaction_finish(mask);
-#endif      
       if (read)
 	{
 	  for (i = 0; i < len; i++)
@@ -537,7 +533,6 @@ void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg)
       sd_timeout(minion_uart_timeout_control);
       break;
     case MINION_UART_SOFTWARE_RESET	:
-      sd_transaction_finish(minion_uart_transfer_mode & MINION_UART_TRNS_READ ? 0x500 : 0x100);
       minion_uart_software_reset = val;
       minion_uart_timeout_control = 1000; 
       minion_uart_transfer_mode = 0;
@@ -572,7 +567,6 @@ uint32_t minion_uart_read(struct minion_uart_host *host, int reg)
     case MINION_UART_RESPONSE+8        : return sd_resp(2);
     case MINION_UART_RESPONSE+12       : return sd_resp(3);
     case MINION_UART_INT_STATUS	:
-      //      sd_transaction_wait();
       return sd_resp(4) < minion_uart_timeout_control ? MINION_UART_INT_RESPONSE|MINION_UART_INT_DATA_AVAIL : MINION_UART_INT_ERROR;
     case MINION_UART_INT_ENABLE	: return minion_uart_int_enable;
     case MINION_UART_PRESENT_STATE	: return MINION_UART_DATA_AVAILABLE;
