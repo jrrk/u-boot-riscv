@@ -195,9 +195,7 @@ extern volatile unsigned int * const sd_base;
 
 #define MINION_UART_CLOCK_CONTROL	0x2C
 #define  MINION_UART_DIVIDER_SHIFT	8
-#define  MINION_UART_DIV_MASK	0x3FF
-#define  MINION_UART_DIV_MASK_LEN	8
-#define  MINION_UART_PROG_CLOCK_MODE  0x0020
+#define  MINION_UART_DIV_MASK	        0xFFFFFF
 #define  MINION_UART_CLOCK_CARD_EN	0x0004
 #define  MINION_UART_CLOCK_INT_STABLE	0x0002
 #define  MINION_UART_CLOCK_INT_EN	0x0001
@@ -307,14 +305,11 @@ struct minion_uart_host {
 	unsigned int quirks;
 	unsigned int host_caps;
 	unsigned int version;
-	unsigned int clk_mul;   /* Clock Multiplier value */
 	unsigned int clock;
 	struct mmc *mmc;
 	const struct minion_uart_ops *ops;
 	int index;
 	int bus_width;
-	void (*set_control_reg)(struct minion_uart_host *host);
-	void (*set_clock)(int dev_index, unsigned int div);
 	uint	voltages;
         uint32_t *start_addr;
 };

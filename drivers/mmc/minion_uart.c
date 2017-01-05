@@ -298,7 +298,7 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 static int minion_uart_set_clock(struct mmc *mmc, unsigned int clock)
 {
 	struct minion_uart_host *host = mmc->priv;
-	unsigned int div, clk = 0, timeout, reg;
+	unsigned int clk = 0, timeout, reg;
 
 	/* Wait max 20 ms */
 	timeout = 200;
@@ -318,54 +318,12 @@ static int minion_uart_set_clock(struct mmc *mmc, unsigned int clock)
 	reg &= ~(MINION_UART_CLOCK_CARD_EN | MINION_UART_CLOCK_INT_EN);
 	minion_uart_write(host, reg, MINION_UART_CLOCK_CONTROL);
 
+	host->clock = clock;
+	
 	if (clock == 0)
 		return 0;
 
-	if (MINION_UART_GET_VERSION(host) >= MINION_UART_SPEC_300) {
-		/*
-		 * Check if the Host Controller supports Programmable Clock
-		 * Mode.
-		 */
-		if (host->clk_mul) {
-			for (div = 1; div <= 1024; div++) {
-				if ((mmc->cfg->f_max * host->clk_mul / div)
-					<= clock)
-					break;
-			}
-
-			/*
-			 * Set Programmable Clock Mode in the Clock
-			 * Control register.
-			 */
-			clk = MINION_UART_PROG_CLOCK_MODE;
-			div--;
-		} else {
-			/* Version 3.00 divisors must be a multiple of 2. */
-			if (mmc->cfg->f_max <= clock) {
-				div = 1;
-			} else {
-				for (div = 2;
-				     div < MINION_UART_MAX_DIV_SPEC_300;
-				     div += 2) {
-					if ((mmc->cfg->f_max / div) <= clock)
-						break;
-				}
-			}
-			div >>= 1;
-		}
-	} else {
-		/* Version 2.00 divisors must be a power of 2. */
-		for (div = 1; div < MINION_UART_MAX_DIV_SPEC_200; div *= 2) {
-			if ((mmc->cfg->f_max / div) <= clock)
-				break;
-		}
-		div >>= 1;
-	}
-
-	if (host->set_clock)
-		host->set_clock(host->index, div);
-
-	clk |= (div & MINION_UART_DIV_MASK) << MINION_UART_DIVIDER_SHIFT;
+	clk |= (clock & MINION_UART_DIV_MASK) << MINION_UART_DIVIDER_SHIFT;
 	clk |= MINION_UART_CLOCK_INT_EN;
 	minion_uart_write(host, clk, MINION_UART_CLOCK_CONTROL);
 
@@ -428,9 +386,6 @@ static void minion_uart_set_ios(struct mmc *mmc)
 	u32 ctrl;
 	struct minion_uart_host *host = mmc->priv;
 
-	if (host->set_control_reg)
-		host->set_control_reg(host);
-
 	if (mmc->clock != host->clock)
 		minion_uart_set_clock(mmc, mmc->clock);
 
@@ -465,43 +420,21 @@ const struct dm_mmc_ops minion_uart_ops = {
 	.set_ios	= minion_uart_set_ios,
 };
 
-int minion_uart_setup_cfg(struct mmc_config *cfg, struct minion_uart_host *host,
-		u32 max_clk, u32 min_clk)
+ int minion_uart_setup_cfg(struct mmc_config *cfg, struct minion_uart_host *host)
 {
-	u32 caps, caps_1;
+	u32 caps;
 
 	caps = minion_uart_read(host, MINION_UART_CAPABILITIES);
 
 	host->version = minion_uart_read(host, MINION_UART_HOST_VERSION);
-
+	
 	cfg->name = host->name;
+	cfg->f_max = 800000;
+	cfg->f_min = 100000;
+	
 #ifndef CONFIG_DM_MMC_OPS
 	cfg->ops = &minion_uart_ops;
 #endif
-	if (max_clk)
-		cfg->f_max = max_clk;
-	else {
-		if (MINION_UART_GET_VERSION(host) >= MINION_UART_SPEC_300)
-			cfg->f_max = (caps & MINION_UART_CLOCK_V3_BASE_MASK) >>
-				MINION_UART_CLOCK_BASE_SHIFT;
-		else
-			cfg->f_max = (caps & MINION_UART_CLOCK_BASE_MASK) >>
-				MINION_UART_CLOCK_BASE_SHIFT;
-		cfg->f_max *= 1000000;
-	}
-	if (cfg->f_max == 0) {
-		printf("%s: Hardware doesn't specify base clock frequency\n",
-		       __func__);
-		return -EINVAL;
-	}
-	if (min_clk)
-		cfg->f_min = min_clk;
-	else {
-		if (MINION_UART_GET_VERSION(host) >= MINION_UART_SPEC_300)
-			cfg->f_min = cfg->f_max / MINION_UART_MAX_DIV_SPEC_300;
-		else
-			cfg->f_min = cfg->f_max / MINION_UART_MAX_DIV_SPEC_200;
-	}
 	cfg->voltages = 0;
 	if (caps & MINION_UART_CAN_VDD_330)
 		cfg->voltages |= MMC_VDD_32_33 | MMC_VDD_33_34;
@@ -522,26 +455,8 @@ int minion_uart_setup_cfg(struct mmc_config *cfg, struct minion_uart_host *host,
 
 	cfg->b_max = CONFIG_SYS_MMC_MAX_BLK_COUNT;
 
-	/*
-	 * In case of Host Controller v3.00, find out whether clock
-	 * multiplier is supported.
-	 */
-	if (MINION_UART_GET_VERSION(host) >= MINION_UART_SPEC_300) {
-		caps_1 = minion_uart_read(host, MINION_UART_CAPABILITIES_1);
-		host->clk_mul = (caps_1 & MINION_UART_CLOCK_MUL_MASK) >>
-				MINION_UART_CLOCK_MUL_SHIFT;
-	}
-
 	return 0;
 }
-
-#ifndef CONFIG_MINION_UART_MIN_FREQ
-# define CONFIG_MINION_UART_MIN_FREQ	0
-#endif
-
-#ifndef CONFIG_MINION_UART_MAX_FREQ
-# define CONFIG_MINION_UART_MAX_FREQ	50000000
-#endif
 
 struct minion_uart_plat {
 	struct mmc_config cfg;
@@ -557,8 +472,8 @@ static int minion_uart_probe(struct udevice *dev)
 
 	host->name = "minion_uart";
 
-	ret = minion_uart_setup_cfg(&plat->cfg, host, CONFIG_MINION_UART_MAX_FREQ,
-			      CONFIG_MINION_UART_MIN_FREQ);
+	ret = minion_uart_setup_cfg(&plat->cfg, host);
+
 	host->mmc = &plat->mmc;
 	if (ret)
 		return ret;

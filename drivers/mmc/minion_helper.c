@@ -112,6 +112,7 @@ void sd_align(int d_align)
   
 void sd_clk_div(int clk_div)
 {
+  printf("Clock divider = %d\n", clk_div);
   queue_write(sd_base+1, clk_div, 0);
 }
 
@@ -161,7 +162,7 @@ void mysleep(int delay)
 
 int sd_flush(unsigned iobuf[], unsigned iobuflen, unsigned trans)
 {
-  int i, cnt = 0;
+  int cnt = 0;
 #if 0  
   int ready = sd_stat(0);
   int itm, discard = 0;
@@ -301,8 +302,8 @@ void sd_transaction_wait(int mask)
 
 int sd_transaction_flush(int flush, unsigned iobuf[], unsigned iobuflen)
 {
-  int i, cnt = 0;
-  //  for (i = 10; i--; ) resp[i] = sd_resp(i);
+  int cnt = 0;
+  //  for (int i = 10; i--; ) resp[i] = sd_resp(i);
   if (flush) cnt = sd_flush(iobuf, iobuflen, sd_resp(9));
     return cnt;
 }
@@ -320,7 +321,7 @@ int sd_transaction(unsigned read, unsigned val, unsigned resp[], unsigned iobuf[
   {
     int cnt = 0;
     int cmd = val >> 8;
-    int i, mask = read ? 0x500 : 0x100;
+    int mask = read ? 0x500 : 0x100;
 #if 0
     sd_cmd(val >> 8);
     sd_cmd_setting(val & 255);
@@ -500,7 +501,7 @@ void minion_dispatch(const char *ucmd)
 
 void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg)
 {  
-  int i, len, read, cmd, mask;
+  int read, mask;
   switch (reg)
     {
     case MINION_UART_BLOCK_COUNT	:
@@ -531,7 +532,6 @@ void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg)
       break;
     case MINION_UART_POWER_180	        : minion_uart_power_180 = val; break;
     case MINION_UART_COMMAND	        :
-      cmd = val >> 8;
       read = minion_uart_transfer_mode & MINION_UART_TRNS_READ;
       mask = read ? 0x500 : 0x100;
       sd_transaction_start(val);
@@ -552,7 +552,7 @@ void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg)
       break;
     case MINION_UART_CLOCK_CONTROL	:
       minion_uart_clock_div = val >> MINION_UART_DIVIDER_SHIFT;
-      printf("Clock divider = %d\n", minion_uart_clock_div);
+      if (minion_uart_clock_div) sd_clk_div(40000000/minion_uart_clock_div);
       if (val & MINION_UART_CLOCK_CARD_EN) printf("Card clock enabled\n"); else printf("Card clock disabled\n");
       break;
     case MINION_UART_INT_STATUS	:
