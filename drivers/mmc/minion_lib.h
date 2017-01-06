@@ -98,8 +98,9 @@ void rx_write_fifo(unsigned int data);
 unsigned int rx_read_fifo(void);
 void sd_transaction_start(int cmd_flags);
 void sd_transaction_wait(int mask);
-int sd_transaction_flush(int flush, unsigned iobuf[], unsigned iobuflen);
+int sd_transaction_flush(int flush, unsigned resp[], unsigned iobuf[], unsigned iobuflen);
 void sd_transaction_finish(int mask);
+void queue_read_array(volatile unsigned int * const sd_ptr, unsigned cnt, unsigned iobuf[]);
 
 void open_handle(void);
 void uart_printf(const char *fmt, ...);

@@ -115,17 +115,17 @@ void minion_uart_cmd_done(
 			  struct mmc_data *data)
 {
   int i, read;
+  unsigned resp[10];
+  queue_read_array(sd_base, 10, resp);
   if (cmd_resp_type & MMC_RSP_136) {
     /* CRC is stripped so we need to do some shifting. */
     for (i = 0; i < 4; i++) {
-      cmd_response[i] = minion_uart_read(host,
-					 MINION_UART_RESPONSE + (3-i)*4) << 8;
+      cmd_response[i] = resp[3-i] << 8;
       if (i != 3)
-	cmd_response[i] |= minion_uart_read(host,
-					    MINION_UART_RESPONSE + (2-i)*4) >> 24;
+	cmd_response[i] |= resp[2-i] >> 24;
     }
   } else {
-    cmd_response[0] = minion_uart_read(host, MINION_UART_RESPONSE);
+    cmd_response[0] = resp[0];
   }
   read = mode & MINION_UART_TRNS_READ;
 #if 1

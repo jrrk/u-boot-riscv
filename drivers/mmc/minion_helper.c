@@ -78,6 +78,26 @@ unsigned queue_read(volatile unsigned int * const sd_ptr)
    return tmp.val;
  }
 
+void queue_read_array(volatile unsigned int * const sd_ptr, unsigned cnt, unsigned iobuf[])
+ {
+   int i, n;
+   struct etrans tmp;
+   if (edcl_cnt+cnt >= edcl_max)
+     queue_flush();
+   for (i = 0; i < cnt; i++)
+     {
+       tmp.mode = edcl_mode_read;
+       tmp.ptr = sd_ptr+i;
+       tmp.val = 0xDEADBEEF;
+       edcl_trans[edcl_cnt++] = tmp;
+     }
+   queue_flush();
+   n = edcl_cnt-1-cnt;
+   edcl_read(n*sizeof(struct etrans), cnt*sizeof(struct etrans), (uint8_t *)(edcl_trans+n));
+   for (i = n; i < n+cnt; i++) iobuf[i-n] = edcl_trans[i].val;
+   edcl_cnt = 0;
+ }
+
 void my_led(unsigned int data)
 {
   queue_write(led_base, data, 1);  
@@ -300,10 +320,10 @@ void sd_transaction_wait(int mask)
     mysleep(10);
 }
 
-int sd_transaction_flush(int flush, unsigned iobuf[], unsigned iobuflen)
+ int sd_transaction_flush(int flush, unsigned resp[], unsigned iobuf[], unsigned iobuflen)
 {
-  int cnt = 0;
-  //  for (int i = 10; i--; ) resp[i] = sd_resp(i);
+  int i, cnt = 0;
+  queue_read_array(sd_base, 10, resp);
   if (flush) cnt = sd_flush(iobuf, iobuflen, sd_resp(9));
     return cnt;
 }
@@ -344,7 +364,7 @@ int sd_transaction(unsigned read, unsigned val, unsigned resp[], unsigned iobuf[
     if (read || !cmd)
       cnt = sd_flush(iobuf, cmd ? iobuflen : 0, sd_resp(9));
 #else
-    cnt = sd_transaction_flush(read || !cmd, iobuf, cmd ? iobuflen : 0);
+    cnt = sd_transaction_flush(read || !cmd, resp, iobuf, cmd ? iobuflen : 0);
 #endif    
 #if 0
     my_led(5);
