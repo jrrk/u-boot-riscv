@@ -111,7 +111,7 @@ int cli_readline_into_buffer(const char *const prompt, char *buffer, int timeout
 extern volatile unsigned int * const sd_base;
 
   int edcl_main(void);
-  void edcl_loadelf(const char *elf);
+  int edcl_loadelf(const char *elf);
   void edcl_close(void);
   int edcl_read(uint64_t addr, int bytes, uint8_t *obuf);
   int edcl_write(uint64_t addr, int bytes, uint8_t *ibuf);

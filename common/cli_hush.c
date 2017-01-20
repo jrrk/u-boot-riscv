@@ -3218,10 +3218,10 @@ static int parse_stream_outer(struct in_str *inp, int flag)
 			if (code == -2) {	/* exit */
 				b_free(&temp);
 				code = 0;
-				/* XXX hackish way to not allow exit from main loop */
+				/* XXX hackish way to allow exit from main loop */
 				if (inp->peek == file_peek) {
-					printf("exit not allowed from main input shell.\n");
-					continue;
+				  exit(0);
+				  continue;
 				}
 				break;
 			}

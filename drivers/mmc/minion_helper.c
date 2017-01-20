@@ -25,7 +25,13 @@ volatile unsigned int * const sd_base = (volatile unsigned int*)(6<<20);
 volatile unsigned int * const sd_stat_ = (volatile unsigned int*)(5<<20);
 volatile unsigned int * const rxfifo_base = (volatile unsigned int*)(4<<20);
 
-enum edcl_mode {edcl_mode_unknown, edcl_mode_read, edcl_mode_write, edcl_mode_block_read, edcl_max=256};
+enum edcl_mode {
+  edcl_mode_unknown,
+  edcl_mode_read,
+  edcl_mode_write,
+  edcl_mode_block_read,
+  edcl_mode_bootstrap,
+  edcl_max=256};
 
 #pragma pack(4)
 
@@ -36,6 +42,11 @@ static struct etrans {
 } edcl_trans[edcl_max+1];
 
 #pragma pack()
+#ifdef DEBUG
+#else
+#define log_edcl_write edcl_write
+#define log_edcl_read edcl_read
+#endif
 
 static int edcl_cnt;
 
@@ -44,10 +55,10 @@ void queue_flush(void)
   struct etrans tmp;
   tmp.val = 0xDEADBEEF;
   edcl_trans[edcl_cnt++].mode = edcl_mode_unknown;
-  edcl_write(0, edcl_cnt*sizeof(struct etrans), (uint8_t*)edcl_trans);
-  edcl_write(edcl_max*sizeof(struct etrans), sizeof(struct etrans), (uint8_t*)&tmp);
+  log_edcl_write(0, edcl_cnt*sizeof(struct etrans), (uint8_t*)edcl_trans);
+  log_edcl_write(edcl_max*sizeof(struct etrans), sizeof(struct etrans), (uint8_t*)&tmp);
   do {
-    edcl_read(0, sizeof(tmp), (uint8_t *)&(tmp));
+    log_edcl_read(0, sizeof(tmp), (uint8_t *)&(tmp));
   } while (tmp.ptr);
 }
 
@@ -73,7 +84,7 @@ unsigned queue_read(volatile unsigned int * const sd_ptr)
    tmp.val = 0xDEADBEEF;
    edcl_trans[edcl_cnt++] = tmp;
    queue_flush();
-   edcl_read((edcl_cnt-2)*sizeof(struct etrans), sizeof(tmp), (uint8_t *)&tmp);
+   log_edcl_read((edcl_cnt-2)*sizeof(struct etrans), sizeof(tmp), (uint8_t *)&tmp);
    edcl_cnt = 0;
    return tmp.val;
  }
@@ -93,10 +104,44 @@ void queue_read_array(volatile unsigned int * const sd_ptr, unsigned cnt, unsign
      }
    queue_flush();
    n = edcl_cnt-1-cnt;
-   edcl_read(n*sizeof(struct etrans), cnt*sizeof(struct etrans), (uint8_t *)(edcl_trans+n));
+   log_edcl_read(n*sizeof(struct etrans), cnt*sizeof(struct etrans), (uint8_t *)(edcl_trans+n));
    for (i = n; i < n+cnt; i++) iobuf[i-n] = edcl_trans[i].val;
    edcl_cnt = 0;
  }
+
+int queue_block_read(unsigned iobuf[], unsigned iobuflen)
+{
+  int cnt;
+   struct etrans tmp;
+   log_edcl("cnt = queue_block_read(iobuf, %d);\n", iobuflen);
+   queue_flush();
+   tmp.mode = edcl_mode_block_read;
+   tmp.ptr = rxfifo_base;
+   tmp.val = 1;
+   log_edcl_write(0, sizeof(struct etrans), (uint8_t*)&tmp);
+   tmp.val = 0xDEADBEEF;
+   log_edcl_write(edcl_max*sizeof(struct etrans), sizeof(struct etrans), (uint8_t*)&tmp);
+   do {
+    log_edcl_read(0, sizeof(tmp), (uint8_t *)&tmp);
+  } while (tmp.ptr);
+   cnt = tmp.mode;
+   if (cnt > iobuflen) cnt = iobuflen;
+   if (cnt) log_edcl_read(sizeof(struct etrans), cnt*sizeof(uint32_t), (uint8_t *)iobuf);
+   return cnt;
+}
+
+int minion_sd_loadelf(const char *elf)
+{
+  int entry = edcl_loadelf(elf);
+  struct etrans tmp;
+  tmp.mode = edcl_mode_bootstrap;
+  tmp.ptr = entry;
+  tmp.val = entry;
+  edcl_trans[edcl_cnt++] = tmp;
+  queue_flush();
+  edcl_cnt = 0;
+  return 0;
+}
 
 void my_led(unsigned int data)
 {
@@ -180,49 +225,6 @@ void mysleep(int delay)
 {
 }
 
-int sd_flush(unsigned iobuf[], unsigned iobuflen, unsigned trans)
-{
-  int cnt = 0;
-#if 0  
-  int ready = sd_stat(0);
-  int itm, discard = 0;
-  while (1 & ~ready)
-    {
-      queue_write(rxfifo_base, 0, 0);
-      itm = queue_read(rxfifo_base);
-#ifdef CONFIG_MINION_VERBOSE
-      if (itm && (itm != -1)) printf("rx_fifo read @%X: %.8X\n", cnt, itm);
-#endif
-      if (cnt < iobuflen) iobuf[cnt++] = itm; else discard++;
-      ready = sd_stat(0);
-    }
-#else
-   struct etrans tmp;
-   queue_flush();
-   tmp.mode = edcl_mode_block_read;
-   tmp.ptr = rxfifo_base;
-   tmp.val = 1;
-   edcl_write(0, sizeof(struct etrans), (uint8_t*)&tmp);
-   tmp.val = 0xDEADBEEF;
-   edcl_write(edcl_max*sizeof(struct etrans), sizeof(struct etrans), (uint8_t*)&tmp);
-   do {
-    edcl_read(0, sizeof(tmp), (uint8_t *)&tmp);
-  } while (tmp.ptr);
-   cnt = tmp.mode;
-   if (cnt > iobuflen) cnt = iobuflen;
-   if (cnt) edcl_read(sizeof(struct etrans), cnt*sizeof(uint32_t), (uint8_t *)iobuf);
-#endif
-#ifdef LEGACY
-  if (cnt) iobuf[cnt] = 0;
-  for (i = 0; i < cnt; i++)
-    iobuf[i] = (iobuf[i] << 24) | (iobuf[i+1] >> 8);
-#endif
-#ifdef CONFIG_MINION_VERBOSE
-  printf("rx_fifo read: %d items (%d transactions, %d discarded)\n", cnt, trans, discard);
-#endif
-   return cnt;  
-}
-
 void board_mmc_power_init(void)
 {
   my_led(1);
@@ -265,7 +267,6 @@ size_t mystrtol(const char *nptr, char **endptr, int base)
 }
 
 static int minion_uart_host_control;
-static int minion_uart_ctrl_dma;
 static int minion_uart_ctrl_cd;
 static int minion_uart_power_control;
 static int minion_uart_power_180;
@@ -324,7 +325,7 @@ void sd_transaction_wait(int mask)
 {
   int i, cnt = 0;
   queue_read_array(sd_base, 10, resp);
-  if (flush) cnt = sd_flush(iobuf, iobuflen, sd_resp(9));
+  if (flush) cnt = queue_block_read(iobuf, iobuflen);
     return cnt;
 }
 
@@ -342,39 +343,10 @@ int sd_transaction(unsigned read, unsigned val, unsigned resp[], unsigned iobuf[
     int cnt = 0;
     int cmd = val >> 8;
     int mask = read ? 0x500 : 0x100;
-#if 0
-    sd_cmd(val >> 8);
-    sd_cmd_setting(val & 255);
-    my_led(2);
-    mysleep(10);
-    sd_cmd_start(1);
-    my_led(3);
-#else
     sd_transaction_start(val);
-#endif
-#if 0
-    while ((sd_stat(0) & mask) != mask);
-    my_led(4);
-    mysleep(10);
-#else
     sd_transaction_wait(mask);
-#endif
-#if 0
-    for (i = 10; i--; ) resp[i] = sd_resp(i);
-    if (read || !cmd)
-      cnt = sd_flush(iobuf, cmd ? iobuflen : 0, sd_resp(9));
-#else
     cnt = sd_transaction_flush(read || !cmd, resp, iobuf, cmd ? iobuflen : 0);
-#endif    
-#if 0
-    my_led(5);
-    sd_cmd_start(0);
-    sd_setting(0);
-    while ((sd_stat(0) & mask) != 0);
-    my_led(6);
-#else
     sd_transaction_finish(mask);
-#endif    
     return cnt;
   }
 
@@ -519,9 +491,47 @@ void minion_dispatch(const char *ucmd)
       }
 }
 
+const char *minion_uart_kind(int reg)
+{  
+  switch (reg)
+    {
+    case MINION_UART_ARGUMENT	        : return "MINION_UART_ARGUMENT";
+    case MINION_UART_BLOCK_COUNT	: return "MINION_UART_BLOCK_COUNT";
+    case MINION_UART_BLOCK_GAP_CONTROL	: return "MINION_UART_BLOCK_GAP_CONTROL";
+    case MINION_UART_BLOCK_SIZE	        : return "MINION_UART_BLOCK_SIZE";
+    case MINION_UART_BUFFER             : return "MINION_UART_BUFFER ";
+    case MINION_UART_CAPABILITIES       : return "MINION_UART_CAPABILITIES";
+    case MINION_UART_CLOCK_CONTROL	: return "MINION_UART_CLOCK_CONTROL";
+    case MINION_UART_COMMAND	        : return "MINION_UART_COMMAND";
+    case MINION_UART_CTRL_CD_TEST	: return "MINION_UART_CTRL_CD_TEST";
+    case MINION_UART_HOST_CONTROL	: return "MINION_UART_HOST_CONTROL";
+    case MINION_UART_HOST_VERSION	: return "MINION_UART_HOST_VERSION";
+    case MINION_UART_INT_ENABLE	        : return "MINION_UART_INT_ENABLE";
+    case MINION_UART_INT_STATUS	        : return "MINION_UART_INT_STATUS";
+    case MINION_UART_MAX_CURRENT	: return "MINION_UART_MAX_CURRENT";
+    case MINION_UART_POWER_180	        : return "MINION_UART_POWER_180";
+    case MINION_UART_POWER_CONTROL	: return "MINION_UART_POWER_CONTROL";
+    case MINION_UART_PRESENT_STATE	: return "MINION_UART_PRESENT_STATE";
+    case MINION_UART_RESPONSE+12        : return "MINION_UART_RESPONSE+12 ";
+    case MINION_UART_RESPONSE+4         : return "MINION_UART_RESPONSE+4";
+    case MINION_UART_RESPONSE+8         : return "MINION_UART_RESPONSE+8";
+    case MINION_UART_RESPONSE           : return "MINION_UART_RESPONSE";
+    case MINION_UART_SET_ACMD12_ERROR	: return "MINION_UART_SET_ACMD12_ERROR";
+    case MINION_UART_SET_INT_ERROR	: return "MINION_UART_SET_INT_ERROR";
+    case MINION_UART_SIGNAL_ENABLE	: return "MINION_UART_SIGNAL_ENABLE";
+    case MINION_UART_SLOT_INT_STATUS	: return "MINION_UART_SLOT_INT_STATUS";
+    case MINION_UART_SOFTWARE_RESET	: return "MINION_UART_SOFTWARE_RESET";
+    case MINION_UART_TIMEOUT_CONTROL	: return "MINION_UART_TIMEOUT_CONTROL";
+    case MINION_UART_TRANSFER_MODE	: return "MINION_UART_TRANSFER_MODE";
+    case MINION_UART_WAKE_UP_CONTROL	: return "MINION_UART_WAKE_UP_CONTROL";
+    default: abort();
+    }
+}
+
 void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg)
 {  
   int read, mask;
+  log_edcl("minion_uart_write(&host, 0x%.8X, %s);\n", val, minion_uart_kind(reg));
   switch (reg)
     {
     case MINION_UART_BLOCK_COUNT	:
@@ -538,7 +548,6 @@ void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg)
       else
 	printf("4-bit bus disabled\n");
       break;
-    case MINION_UART_CTRL_DMA_MASK	: minion_uart_ctrl_dma = val; break;
     case MINION_UART_ARGUMENT	        :
       sd_arg(val);
       break;
@@ -593,6 +602,11 @@ void minion_uart_write(struct minion_uart_host *host, uint32_t val, int reg)
 
 uint32_t minion_uart_read(struct minion_uart_host *host, int reg)
 {
+  const char *kind = minion_uart_kind(reg);
+  char *lkind = strdup(kind);
+  int l = strlen(lkind);
+  while (l--) lkind[l] = tolower(lkind[l]);
+  log_edcl("%s = minion_uart_read(&host, %s);\n", lkind, kind);
   switch (reg)
     {
     case MINION_UART_RESPONSE          : return sd_resp(0);
@@ -613,3 +627,8 @@ uint32_t minion_uart_read(struct minion_uart_host *host, int reg)
     }
   return 0;
 }
+
+
+
+
+

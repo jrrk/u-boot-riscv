@@ -82,12 +82,6 @@ int minion_sd_debug(void)
   return 0;
 }
 
-int minion_sd_loadelf(const char *elf)
-{
-  edcl_loadelf(elf);
-  return 0;
-}
-
 void minion_uart_reset(struct minion_uart_host *host, u8 mask)
 {
 	unsigned long timeout;
@@ -104,6 +98,11 @@ void minion_uart_reset(struct minion_uart_host *host, u8 mask)
 		timeout--;
 		udelay(1000);
 	}
+}
+
+uint32_t to_cpu(uint32_t arg)
+{
+  return __be32_to_cpu(arg);
 }
 
 void minion_uart_cmd_done(
@@ -128,38 +127,14 @@ void minion_uart_cmd_done(
     cmd_response[0] = resp[0];
   }
   read = mode & MINION_UART_TRNS_READ;
-#if 1
   int len = 0;
-  if (read || !cmd) len = sd_flush(host->start_addr, cmd ? data->blocksize*data->blocks : 0, sd_resp(9));
+  if (read || !cmd) len = queue_block_read(host->start_addr, cmd ? data->blocksize*data->blocks : 0);
   if (read)
     {
+      printf("queue_block_read returned %d\n", len);
       for (i = 0; i < len; i++)
-	(host->start_addr)[i] = __be32_to_cpu((host->start_addr)[i]);
+	(host->start_addr)[i] = to_cpu((host->start_addr)[i]);
     }
-	
-#else
-  int cnt = 0;
-  int ready = sd_stat(0);
-  int itm, discard = 0;
-  while (1 & ~ready)
-    {
-      rx_write_fifo(0);
-      itm = rx_read_fifo();
-      if (read && (cnt < data->blocksize*data->blocks))
-	(host->start_addr)[cnt++] = itm; else discard++;
-      ready = sd_stat(0);
-    }
-  if (read)
-    {
-#ifdef LEGACY
-      (host->start_addr)[cnt] = 0;
-      for (i = 0; i < cnt; i++)
-	(host->start_addr)[i] = ((host->start_addr)[i] << 24) | ((host->start_addr)[i+1] >> 8);
-#endif
-      for (i = 0; i < cnt; i++)
-	(host->start_addr)[i] = __be32_to_cpu((host->start_addr)[i]);
-    }      
-#endif      
 }
 
 #ifdef CONFIG_DM_MMC_OPS
