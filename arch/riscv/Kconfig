@@ -1,0 +1,18 @@
+menu "Riscv architecture"
+	depends on RISCV
+
+config SYS_ARCH
+	default "riscv"
+
+choice
+	prompt "Target select"
+	optional
+
+config TARGET_RISCV_GENERIC
+	bool "Support riscv-generic"
+
+endchoice
+
+source "board/riscv/riscv-generic/Kconfig"
+
+endmenu

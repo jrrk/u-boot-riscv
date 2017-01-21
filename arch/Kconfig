@@ -58,6 +58,9 @@ config PPC
 	select HAVE_PRIVATE_LIBGCC
 	select SUPPORT_OF_CONTROL
 
+config RISCV
+	bool "RISCV architecture"
+
 config SANDBOX
 	bool "Sandbox"
 	select SUPPORT_OF_CONTROL
@@ -164,6 +167,7 @@ source "arch/nds32/Kconfig"
 source "arch/nios2/Kconfig"
 source "arch/openrisc/Kconfig"
 source "arch/powerpc/Kconfig"
+source "arch/riscv/Kconfig"
 source "arch/sandbox/Kconfig"
 source "arch/sh/Kconfig"
 source "arch/sparc/Kconfig"
