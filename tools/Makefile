@@ -104,8 +104,8 @@ dumpimage-mkimage-objs := aisimage.o \
 			gpimage-common.o \
 			$(RSA_OBJS-y)
 
-dumpimage-objs := $(dumpimage-mkimage-objs) dumpimage.o
-mkimage-objs   := $(dumpimage-mkimage-objs) mkimage.o
+dumpimage-objs := $(dumpimage-mkimage-objs) dumpimage.o common/image-sig.o lib/rsa/rsa-checksum.o
+mkimage-objs   := $(dumpimage-mkimage-objs) mkimage.o common/image-sig.o lib/rsa/rsa-checksum.o
 fit_info-objs   := $(dumpimage-mkimage-objs) fit_info.o
 fit_check_sign-objs   := $(dumpimage-mkimage-objs) fit_check_sign.o
 

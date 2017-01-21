@@ -14,9 +14,9 @@
 static ulong timestamp;
 
 /* how many counter cycles in a jiffy */
-#define TIMER_COUNTER_CYCLES  (CONFIG_SYS_CLK_FREQ/CONFIG_SYS_RISCV_TMR_HZ)
+#define TIMER_COUNTER_CYCLES  (CONFIG_SYS_CLK_FREQ/100)
 /* how many ms elapses between each timer interrupt */
-#define TIMER_TIMESTAMP_INC   (1000/CONFIG_SYS_RISCV_TMR_HZ)
+#define TIMER_TIMESTAMP_INC   (10)
 /* how many cycles per ms */
 #define TIMER_CYCLES_MS       (CONFIG_SYS_CLK_FREQ/1000)
 /* how many cycles per us */

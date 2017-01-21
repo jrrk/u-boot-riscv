@@ -17,6 +17,9 @@
 
 typedef struct bd_info {
 	unsigned long	bi_arch_number;	/* unique id for this board */
+        int             bi_baudrate;    /* serial console baudrate */
+        unsigned long   bi_ip_addr;     /* IP Address */
+        unsigned char   bi_enetaddr[6]; /* Ethernet adress */
 	unsigned long	bi_boot_params;	/* where this board expects params */
 	unsigned long	bi_memstart;	/* start of DRAM memory */
 	phys_size_t	bi_memsize;	/* size of DRAM memory in bytes */

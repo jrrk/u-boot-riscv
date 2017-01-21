@@ -503,6 +503,22 @@ int do_bdinfo(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	return 0;
 }
 
+#elif defined(CONFIG_RISCV)
+
+gd_t *gd;
+
+int do_bdinfo(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+{
+	bd_t *bd = gd->bd;
+
+	print_bi_mem(bd);
+	print_bi_flash(bd);
+	print_eth_ip_addr();
+	print_baudrate();
+
+	return 0;
+}
+
 #elif defined(CONFIG_ARC)
 
 int do_bdinfo(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])

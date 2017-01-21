@@ -1222,7 +1222,6 @@ cmd_smap = \
 		-c $(srctree)/common/system_map.c -o common/system_map.o
 
 u-boot:	$(u-boot-init) $(u-boot-main) u-boot.lds FORCE
-	make -s -C drivers/mmc/sdcard
 	$(call if_changed,u-boot__)
 ifeq ($(CONFIG_KALLSYMS),y)
 	$(call cmd,smap)

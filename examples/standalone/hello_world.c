@@ -8,6 +8,13 @@
 #include <common.h>
 #include <exports.h>
 
+#if defined(CONFIG_RISCV)
+unsigned long get_version(void) { return 0; }
+int printf(const char *fmt, ...) { return 0; }
+int tstc(void) { return 0; }
+int getc(void) { return 0; }
+#endif
+
 int hello_world (int argc, char * const argv[])
 {
 	int i;

@@ -72,3 +72,28 @@ int do_bootm_linux(int flag, int argc, char * const argv[],
 
 	return 1;
 }
+
+void relocate_code(ulong start_addr_sp, gd_t *new_gd, ulong relocaddr)
+{
+
+}
+
+//#ifndef CONFIG_TIMER
+/* system timer offset in ms */
+static unsigned long riscv_timer_offset;
+
+unsigned long os_get_nsec(void)
+{
+  return 0;
+}
+
+void riscv_timer_add_offset(unsigned long offset)
+{
+	riscv_timer_offset += offset;
+}
+
+unsigned long timer_read_counter(void)
+{
+	return os_get_nsec() + riscv_timer_offset * 1000;
+}
+//#endif

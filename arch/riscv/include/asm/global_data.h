@@ -15,7 +15,6 @@ struct arch_global_data {
 
 #include <asm-generic/global_data.h>
 
-/* OR32 GCC already has r10 set as fixed-use */
-#define DECLARE_GLOBAL_DATA_PTR
+#define DECLARE_GLOBAL_DATA_PTR extern gd_t *gd
 
 #endif /* __ASM_GBL_DATA_H */

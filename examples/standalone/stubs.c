@@ -227,6 +227,7 @@ gd_t *global_data;
 "	l.jr	r13\n"		\
 "	l.nop\n"				\
 	: : "i"(offsetof(gd_t, jt)), "i"(FO(x)) : "r13");
+#elif defined(CONFIG_RISCV)
 #elif defined(CONFIG_ARC)
 /*
  * r25 holds the pointer to the global_data. r10 is call clobbered.

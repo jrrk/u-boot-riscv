@@ -1,12 +1,12 @@
 #include <config.h>
-OUTPUT_ARCH(or1k)
+OUTPUT_ARCH(riscv)
 __DYNAMIC  =  0;
 
 MEMORY
 {
 	vectors	: ORIGIN = 0, LENGTH = 0x2000
-	ram	: ORIGIN = CONFIG_SYS_MONITOR_BASE,
-		  LENGTH = CONFIG_SYS_MONITOR_LEN
+	ram	: ORIGIN = 0x80000000,
+		  LENGTH = 0x10000000
 }
 
 SECTIONS
@@ -52,14 +52,15 @@ SECTIONS
 		*(.data)
 		edata = .;
 		_edata = .;
+		__init_end = .;
 	} > ram
 
 	.bss :
 	{
-		_bss_start = .;
+		__bss_start = .;
 		*(.bss)
 		*(COMMON)
-		_bss_end = .;
+		__bss_end = .;
 	} > ram
 	__end = .;
 
