@@ -131,7 +131,9 @@ void minion_uart_cmd_done(
   if (read || !cmd) len = queue_block_read(host->start_addr, cmd ? data->blocksize*data->blocks : 0);
   if (read)
     {
+#ifdef VERBOSE
       printf("queue_block_read returned %d\n", len);
+#endif
       for (i = 0; i < len; i++)
 	(host->start_addr)[i] = to_cpu((host->start_addr)[i]);
     }
