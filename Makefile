@@ -705,7 +705,7 @@ PLATFORM_LIBS +=-L/usr/lib/x86_64-linux-gnu -lstdc++ drivers/mmc/sdcard/obj_dir/
 endif
 
 ifeq ($(CONFIG_MINION_UART),y)
-PLATFORM_LIBS += -L../lowrisc-chip-update/minion_subsystem/software/tester -ledcl -lpthread -ldl -lbfd -lstdc++
+PLATFORM_LIBS += -Ldrivers/mmc/edcl -ledcl -lpthread -ldl -lbfd -lstdc++
 endif
 
 # Add GCC lib
