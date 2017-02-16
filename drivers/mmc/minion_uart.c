@@ -82,14 +82,14 @@ int minion_sd_debug(void)
   return 0;
 }
 
-void minion_uart_reset(struct minion_uart_host *host, u8 mask)
+void sdhci_reset(struct minion_uart_host *host, u8 mask)
 {
 	unsigned long timeout;
 
 	/* Wait max 100 ms */
 	timeout = 100;
-	minion_uart_write(host, mask, MINION_UART_SOFTWARE_RESET);
-	while (minion_uart_read(host, MINION_UART_SOFTWARE_RESET) & mask) {
+	sdhci_write(host, mask, SDHCI_SOFTWARE_RESET);
+	while (sdhci_read(host, SDHCI_SOFTWARE_RESET) & mask) {
 		if (timeout == 0) {
 			printf("%s: Reset 0x%x never completed.\n",
 			       __func__, (int)mask);
@@ -105,7 +105,7 @@ uint32_t to_cpu(uint32_t arg)
   return __be32_to_cpu(arg);
 }
 
-void minion_uart_cmd_done(
+void sdhci_cmd_done(
 			  struct minion_uart_host *host,
 			  uint cmd_resp_type,
 			  uint cmd_response[4],
@@ -126,27 +126,18 @@ void minion_uart_cmd_done(
   } else {
     cmd_response[0] = resp[0];
   }
-  read = mode & MINION_UART_TRNS_READ;
-  int len = 0;
-  if (read || !cmd) len = queue_block_read(host->start_addr, cmd ? data->blocksize*data->blocks : 0);
-  if (read)
-    {
-#ifdef VERBOSE
-      printf("queue_block_read returned %d\n", len);
-#endif
-      for (i = 0; i < len; i++)
-	(host->start_addr)[i] = to_cpu((host->start_addr)[i]);
-    }
+  if (mode & SDHCI_TRNS_READ)
+	memcpy(host->start_addr, minion_iobuf, data->blocksize*data->blocks);
 }
 
 #ifdef CONFIG_DM_MMC_OPS
-static int minion_uart_send_command(struct udevice *dev, struct mmc_cmd *cmd,
+static int sdhci_send_command(struct udevice *dev, struct mmc_cmd *cmd,
 			      struct mmc_data *data)
 {
 	struct mmc *mmc = mmc_get_mmc_dev(dev);
 
 #else
-static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
+static int sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 			      struct mmc_data *data)
 {
 #endif
@@ -159,20 +150,20 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 	unsigned start = get_timer(0);
 
 	/* Timeout unit - ms */
-	static unsigned int cmd_timeout = MINION_UART_CMD_DEFAULT_TIMEOUT;
+	static unsigned int cmd_timeout = SDHCI_CMD_DEFAULT_TIMEOUT;
 
-	minion_uart_write(host, MINION_UART_INT_ALL_MASK, MINION_UART_INT_STATUS);
-	mask = MINION_UART_CMD_INHIBIT | MINION_UART_DATA_INHIBIT;
+	sdhci_write(host, SDHCI_INT_ALL_MASK, SDHCI_INT_STATUS);
+	mask = SDHCI_CMD_INHIBIT | SDHCI_DATA_INHIBIT;
 
 	/* We shouldn't wait for data inihibit for stop commands, even
 	   though they might use busy signaling */
 	if (cmd->cmdidx == MMC_CMD_STOP_TRANSMISSION)
-		mask &= ~MINION_UART_DATA_INHIBIT;
+		mask &= ~SDHCI_DATA_INHIBIT;
 
-	while (minion_uart_read(host, MINION_UART_PRESENT_STATE) & mask) {
+	while (sdhci_read(host, SDHCI_PRESENT_STATE) & mask) {
 		if (time >= cmd_timeout) {
 			printf("%s: MMC: %d busy ", __func__, mmc_dev);
-			if (2 * cmd_timeout <= MINION_UART_CMD_MAX_TIMEOUT) {
+			if (2 * cmd_timeout <= SDHCI_CMD_MAX_TIMEOUT) {
 				cmd_timeout += cmd_timeout;
 				printf("timeout increasing to: %u ms.\n",
 				       cmd_timeout);
@@ -185,65 +176,65 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 		udelay(1000);
 	}
 
-	mask = MINION_UART_INT_RESPONSE;
+	mask = SDHCI_INT_RESPONSE;
 	switch(cmd->resp_type)
 	  {
 	  case 0:
-	    flags = MINION_UART_CMD_RESP_NONE; break;
+	    flags = SDHCI_CMD_RESP_NONE; break;
 	  case MMC_RSP_R1:
-	    flags = MINION_UART_CMD_RESP_SHORT; break;
+	    flags = SDHCI_CMD_RESP_SHORT; break;
 	  case MMC_RSP_R1b:
-	    flags = MINION_UART_CMD_RESP_SHORT_BUSY; break;
+	    flags = SDHCI_CMD_RESP_SHORT_BUSY; break;
 	  case MMC_RSP_R2:
-	    flags = MINION_UART_CMD_RESP_LONG; break;
+	    flags = SDHCI_CMD_RESP_LONG; break;
 	  case MMC_RSP_R3:
-	    flags = MINION_UART_CMD_RESP_SHORT_BUSY; break;
+	    flags = SDHCI_CMD_RESP_SHORT_BUSY; break;
 	  default:
 	    flags = 0;
 	  }
 
 	if (cmd->resp_type & MMC_RSP_CRC)
-		flags |= MINION_UART_CMD_CRC;
+		flags |= SDHCI_CMD_CRC;
 	if (cmd->resp_type & MMC_RSP_OPCODE)
-		flags |= MINION_UART_CMD_INDEX;
+		flags |= SDHCI_CMD_INDEX;
 	if (data)
-		flags |= MINION_UART_CMD_DATA;
+		flags |= SDHCI_CMD_DATA;
 
 	/* Set Transfer mode regarding to data flag */
 	if (data != 0) {
-		minion_uart_write(host, 500, MINION_UART_TIMEOUT_CONTROL);
-		mode = MINION_UART_TRNS_BLK_CNT_EN;
+		sdhci_write(host, 500, SDHCI_TIMEOUT_CONTROL);
+		mode = SDHCI_TRNS_BLK_CNT_EN;
 		if (data->blocks > 1)
-			mode |= MINION_UART_TRNS_MULTI;
+			mode |= SDHCI_TRNS_MULTI;
 
 		if (data->flags == MMC_DATA_READ)
-			mode |= MINION_UART_TRNS_READ;
+			mode |= SDHCI_TRNS_READ;
 
 		if (data->flags == MMC_DATA_READ)
 		  host->start_addr = (uint32_t *)(data->dest);
 		else
 		  host->start_addr = (uint32_t *)(data->src);
 
-		minion_uart_write(host, data->blocksize, MINION_UART_BLOCK_SIZE);
-		minion_uart_write(host, data->blocks, MINION_UART_BLOCK_COUNT);
-		minion_uart_write(host, mode, MINION_UART_TRANSFER_MODE);
+		sdhci_write(host, data->blocksize, SDHCI_BLOCK_SIZE);
+		sdhci_write(host, data->blocks, SDHCI_BLOCK_COUNT);
+		sdhci_write(host, mode, SDHCI_TRANSFER_MODE);
 	} else if (cmd->resp_type & MMC_RSP_BUSY) {
-		minion_uart_write(host, 0xe, MINION_UART_TIMEOUT_CONTROL);
+		sdhci_write(host, 0xe, SDHCI_TIMEOUT_CONTROL);
 	}
 
-	minion_uart_write(host, cmd->cmdarg, MINION_UART_ARGUMENT);
-	minion_uart_write(host, MINION_UART_MAKE_CMD(cmd->cmdidx, flags), MINION_UART_COMMAND);
+	sdhci_write(host, cmd->cmdarg, SDHCI_ARGUMENT);
+	sdhci_write(host, SDHCI_MAKE_CMD(cmd->cmdidx, flags), SDHCI_COMMAND);
 	start = get_timer(0);
 	do {
-		stat = minion_uart_read(host, MINION_UART_INT_STATUS);
+		stat = sdhci_read(host, SDHCI_INT_STATUS);
 		unsigned end = get_timer(start);
 #ifdef CONFIG_MINION_VERBOSE
 		printf("start=%d, end=%d, ((%X & %X) != %X)\n", start, end, stat, mask, mask);
 #endif
-		if (stat & MINION_UART_INT_ERROR)
+		if (stat & SDHCI_INT_ERROR)
 			break;
 
-		if (end >= MINION_UART_READ_STATUS_TIMEOUT) {
+		if (end >= SDHCI_READ_STATUS_TIMEOUT) {
 		  {
 				printf("%s: Timeout for status update!\n",
 				       __func__);
@@ -252,35 +243,35 @@ static int minion_uart_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 		}
 	} while ((stat & mask) != mask);
 
-	if ((stat & (MINION_UART_INT_ERROR | mask)) == mask) {
-	  minion_uart_cmd_done(host, cmd->resp_type, cmd->response, mode, cmd->cmdidx, data);
-		minion_uart_write(host, mask, MINION_UART_INT_STATUS);
+	if ((stat & (SDHCI_INT_ERROR | mask)) == mask) {
+	  sdhci_cmd_done(host, cmd->resp_type, cmd->response, mode, cmd->cmdidx, data);
+		sdhci_write(host, mask, SDHCI_INT_STATUS);
 	} else
 		ret = -1;
 
-	stat = minion_uart_read(host, MINION_UART_INT_STATUS);
-	minion_uart_write(host, MINION_UART_INT_ALL_MASK, MINION_UART_INT_STATUS);
+	stat = sdhci_read(host, SDHCI_INT_STATUS);
+	sdhci_write(host, SDHCI_INT_ALL_MASK, SDHCI_INT_STATUS);
 	if (!ret) {
 		return 0;
 	}
 
-	minion_uart_reset(host, MINION_UART_RESET_CMD);
-	minion_uart_reset(host, MINION_UART_RESET_DATA);
-	if (stat & MINION_UART_INT_TIMEOUT)
+	sdhci_reset(host, SDHCI_RESET_CMD);
+	sdhci_reset(host, SDHCI_RESET_DATA);
+	if (stat & SDHCI_INT_TIMEOUT)
 		return -ETIMEDOUT;
 	else
 		return -ECOMM;
 }
 
-static int minion_uart_set_clock(struct mmc *mmc, unsigned int clock)
+static int sdhci_set_clock(struct mmc *mmc, unsigned int clock)
 {
 	struct minion_uart_host *host = mmc->priv;
 	unsigned int clk = 0, timeout, reg;
 
 	/* Wait max 20 ms */
 	timeout = 200;
-	while (minion_uart_read(host, MINION_UART_PRESENT_STATE) &
-			   (MINION_UART_CMD_INHIBIT | MINION_UART_DATA_INHIBIT)) {
+	while (sdhci_read(host, SDHCI_PRESENT_STATE) &
+			   (SDHCI_CMD_INHIBIT | SDHCI_DATA_INHIBIT)) {
 		if (timeout == 0) {
 			printf("%s: Timeout to wait cmd & data inhibit\n",
 			       __func__);
@@ -291,23 +282,23 @@ static int minion_uart_set_clock(struct mmc *mmc, unsigned int clock)
 		udelay(100);
 	}
 
-	reg = minion_uart_read(host, MINION_UART_CLOCK_CONTROL);
-	reg &= ~(MINION_UART_CLOCK_CARD_EN | MINION_UART_CLOCK_INT_EN);
-	minion_uart_write(host, reg, MINION_UART_CLOCK_CONTROL);
+	reg = sdhci_read(host, SDHCI_CLOCK_CONTROL);
+	reg &= ~(SDHCI_CLOCK_CARD_EN | SDHCI_CLOCK_INT_EN);
+	sdhci_write(host, reg, SDHCI_CLOCK_CONTROL);
 
 	host->clock = clock;
 	
 	if (clock == 0)
 		return 0;
 
-	clk |= (clock & MINION_UART_DIV_MASK) << MINION_UART_DIVIDER_SHIFT;
-	clk |= MINION_UART_CLOCK_INT_EN;
-	minion_uart_write(host, clk, MINION_UART_CLOCK_CONTROL);
+	clk |= (clock & SDHCI_DIV_MASK) << SDHCI_DIVIDER_SHIFT;
+	clk |= SDHCI_CLOCK_INT_EN;
+	sdhci_write(host, clk, SDHCI_CLOCK_CONTROL);
 
 	/* Wait max 20 ms */
 	timeout = 20;
-	while (!((clk = minion_uart_read(host, MINION_UART_CLOCK_CONTROL))
-		& MINION_UART_CLOCK_INT_STABLE)) {
+	while (!((clk = sdhci_read(host, SDHCI_CLOCK_CONTROL))
+		& SDHCI_CLOCK_INT_STABLE)) {
 		if (timeout == 0) {
 			printf("%s: Internal clock never stabilised.\n",
 			       __func__);
@@ -317,112 +308,112 @@ static int minion_uart_set_clock(struct mmc *mmc, unsigned int clock)
 		udelay(1000);
 	}
 
-	clk |= MINION_UART_CLOCK_CARD_EN;
-	minion_uart_write(host, clk, MINION_UART_CLOCK_CONTROL);
+	clk |= SDHCI_CLOCK_CARD_EN;
+	sdhci_write(host, clk, SDHCI_CLOCK_CONTROL);
 	return 0;
 }
 
-static void minion_uart_set_power(struct minion_uart_host *host, unsigned short power)
+static void sdhci_set_power(struct minion_uart_host *host, unsigned short power)
 {
 	u8 pwr = 0;
 
 	if (power != (unsigned short)-1) {
 		switch (1 << power) {
 		case MMC_VDD_165_195:
-			pwr = MINION_UART_POWER_180;
+			pwr = SDHCI_POWER_180;
 			break;
 		case MMC_VDD_29_30:
 		case MMC_VDD_30_31:
-			pwr = MINION_UART_POWER_300;
+			pwr = SDHCI_POWER_300;
 			break;
 		case MMC_VDD_32_33:
 		case MMC_VDD_33_34:
-			pwr = MINION_UART_POWER_330;
+			pwr = SDHCI_POWER_330;
 			break;
 		}
 	}
 
 	if (pwr == 0) {
-		minion_uart_write(host, 0, MINION_UART_POWER_CONTROL);
+		sdhci_write(host, 0, SDHCI_POWER_CONTROL);
 		return;
 	}
 
-	pwr |= MINION_UART_POWER_ON;
+	pwr |= SDHCI_POWER_ON;
 
-	minion_uart_write(host, pwr, MINION_UART_POWER_CONTROL);
+	sdhci_write(host, pwr, SDHCI_POWER_CONTROL);
 }
 
 #ifdef CONFIG_DM_MMC_OPS
-static int minion_uart_set_ios(struct udevice *dev)
+static int sdhci_set_ios(struct udevice *dev)
 {
 	struct mmc *mmc = mmc_get_mmc_dev(dev);
 #else
-static void minion_uart_set_ios(struct mmc *mmc)
+static void sdhci_set_ios(struct mmc *mmc)
 {
 #endif
 	u32 ctrl;
 	struct minion_uart_host *host = mmc->priv;
 
 	if (mmc->clock != host->clock)
-		minion_uart_set_clock(mmc, mmc->clock);
+		sdhci_set_clock(mmc, mmc->clock);
 
 	/* Set bus width */
-	ctrl = minion_uart_read(host, MINION_UART_HOST_CONTROL);
+	ctrl = sdhci_read(host, SDHCI_HOST_CONTROL);
 	if (mmc->bus_width == 8) {
-		ctrl &= ~MINION_UART_CTRL_4BITBUS;
-		if ((MINION_UART_GET_VERSION(host) >= MINION_UART_SPEC_300))
-			ctrl |= MINION_UART_CTRL_8BITBUS;
+		ctrl &= ~SDHCI_CTRL_4BITBUS;
+		if ((SDHCI_GET_VERSION(host) >= SDHCI_SPEC_300))
+			ctrl |= SDHCI_CTRL_8BITBUS;
 	} else {
-		if ((MINION_UART_GET_VERSION(host) >= MINION_UART_SPEC_300))
-			ctrl &= ~MINION_UART_CTRL_8BITBUS;
+		if ((SDHCI_GET_VERSION(host) >= SDHCI_SPEC_300))
+			ctrl &= ~SDHCI_CTRL_8BITBUS;
 		if (mmc->bus_width == 4)
-			ctrl |= MINION_UART_CTRL_4BITBUS;
+			ctrl |= SDHCI_CTRL_4BITBUS;
 		else
-			ctrl &= ~MINION_UART_CTRL_4BITBUS;
+			ctrl &= ~SDHCI_CTRL_4BITBUS;
 	}
 
 	if (mmc->clock > 26000000)
-		ctrl |= MINION_UART_CTRL_HISPD;
+		ctrl |= SDHCI_CTRL_HISPD;
 	else
-		ctrl &= ~MINION_UART_CTRL_HISPD;
+		ctrl &= ~SDHCI_CTRL_HISPD;
 
-	minion_uart_write(host, ctrl, MINION_UART_HOST_CONTROL);
+	sdhci_write(host, ctrl, SDHCI_HOST_CONTROL);
 #ifdef CONFIG_DM_MMC_OPS
 	return 0;
 #endif
 }
 
-const struct dm_mmc_ops minion_uart_ops = {
-	.send_cmd	= minion_uart_send_command,
-	.set_ios	= minion_uart_set_ios,
+const struct dm_mmc_ops sdhci_ops = {
+	.send_cmd	= sdhci_send_command,
+	.set_ios	= sdhci_set_ios,
 };
 
- int minion_uart_setup_cfg(struct mmc_config *cfg, struct minion_uart_host *host)
+ int sdhci_setup_cfg(struct mmc_config *cfg, struct minion_uart_host *host)
 {
 	u32 caps;
 
-	caps = minion_uart_read(host, MINION_UART_CAPABILITIES);
+	caps = sdhci_read(host, SDHCI_CAPABILITIES);
 
-	host->version = minion_uart_read(host, MINION_UART_HOST_VERSION);
+	host->version = sdhci_read(host, SDHCI_HOST_VERSION);
 	
 	cfg->name = host->name;
 	cfg->f_max = 800000;
 	cfg->f_min = 100000;
 	
 #ifndef CONFIG_DM_MMC_OPS
-	cfg->ops = &minion_uart_ops;
+	cfg->ops = &sdhci_ops;
 #endif
 	cfg->voltages = 0;
-	if (caps & MINION_UART_CAN_VDD_330)
+	if (caps & SDHCI_CAN_VDD_330)
 		cfg->voltages |= MMC_VDD_32_33 | MMC_VDD_33_34;
-	if (caps & MINION_UART_CAN_VDD_300)
+	if (caps & SDHCI_CAN_VDD_300)
 		cfg->voltages |= MMC_VDD_29_30 | MMC_VDD_30_31;
-	if (caps & MINION_UART_CAN_VDD_180)
+	if (caps & SDHCI_CAN_VDD_180)
 		cfg->voltages |= MMC_VDD_165_195;
 
 	cfg->host_caps = MMC_MODE_HS | MMC_MODE_HS_52MHz | MMC_MODE_4BIT;
-	if (MINION_UART_GET_VERSION(host) >= MINION_UART_SPEC_300) {
-		if (caps & MINION_UART_CAN_DO_8BIT)
+	if (SDHCI_GET_VERSION(host) >= SDHCI_SPEC_300) {
+		if (caps & SDHCI_CAN_DO_8BIT)
 			cfg->host_caps |= MMC_MODE_8BIT;
 	}
 
@@ -435,21 +426,21 @@ const struct dm_mmc_ops minion_uart_ops = {
 	return 0;
 }
 
-struct minion_uart_plat {
+struct sdhci_plat {
 	struct mmc_config cfg;
 	struct mmc mmc;
 };
 
-static int minion_uart_probe(struct udevice *dev)
+static int sdhci_probe(struct udevice *dev)
 {
-	struct minion_uart_plat *plat = dev_get_platdata(dev);
+	struct sdhci_plat *plat = dev_get_platdata(dev);
 	struct mmc_uclass_priv *upriv = dev_get_uclass_priv(dev);
 	struct minion_uart_host *host = dev_get_priv(dev);
 	int ret;
 
-	host->name = "minion_uart";
+	host->name = "sdhci";
 
-	ret = minion_uart_setup_cfg(&plat->cfg, host);
+	ret = sdhci_setup_cfg(&plat->cfg, host);
 
 	host->mmc = &plat->mmc;
 	if (ret)
@@ -460,22 +451,22 @@ static int minion_uart_probe(struct udevice *dev)
 
 	struct mmc *mmc = upriv->mmc;
 
-	minion_uart_reset(host, MINION_UART_RESET_ALL);
+	sdhci_reset(host, SDHCI_RESET_ALL);
 
-	minion_uart_set_power(host, fls(mmc->cfg->voltages) - 1);
+	sdhci_set_power(host, fls(mmc->cfg->voltages) - 1);
 
 	/* Enable only interrupts served by the SD controller */
-	minion_uart_write(host, MINION_UART_INT_DATA_MASK | MINION_UART_INT_CMD_MASK,
-		     MINION_UART_INT_ENABLE);
+	sdhci_write(host, SDHCI_INT_DATA_MASK | SDHCI_INT_CMD_MASK,
+		     SDHCI_INT_ENABLE);
 	/* Mask all uart interrupt sources */
-	minion_uart_write(host, 0x0, MINION_UART_SIGNAL_ENABLE);
+	sdhci_write(host, 0x0, SDHCI_SIGNAL_ENABLE);
 
 	//	list_add_tail(&mmc->link, &mmc_devices);
 
 	return 0;
 }
 
-static int minion_uart_ofdata_to_platdata(struct udevice *dev)
+static int sdhci_ofdata_to_platdata(struct udevice *dev)
 {
 	struct minion_uart_host *host = dev_get_priv(dev);
 
@@ -484,31 +475,31 @@ static int minion_uart_ofdata_to_platdata(struct udevice *dev)
 	return 0;
 }
 
-static int minion_uart_bind(struct udevice *dev)
+static int sdhci_bind(struct udevice *dev)
 {
-	struct minion_uart_plat *plat = dev_get_platdata(dev);
+	struct sdhci_plat *plat = dev_get_platdata(dev);
 	return mmc_bind(dev, &plat->mmc, &plat->cfg);
 }
 
-static const struct udevice_id minion_uart_ids[] = {
+static const struct udevice_id sdhci_ids[] = {
 	{ }
 };
 
-U_BOOT_DRIVER(minion_uart_drv) = {
-	.name		= "minion_uart",
+U_BOOT_DRIVER(sdhci_drv) = {
+	.name		= "sdhci",
 	.id		= UCLASS_MMC,
-	.of_match	= minion_uart_ids,
-	.ofdata_to_platdata = minion_uart_ofdata_to_platdata,
-	.ops		= &minion_uart_ops,
-	.bind		= minion_uart_bind,
-	.probe		= minion_uart_probe,
+	.of_match	= sdhci_ids,
+	.ofdata_to_platdata = sdhci_ofdata_to_platdata,
+	.ops		= &sdhci_ops,
+	.bind		= sdhci_bind,
+	.probe		= sdhci_probe,
 	.priv_auto_alloc_size = sizeof(struct minion_uart_host),
-	.platdata_auto_alloc_size = sizeof(struct minion_uart_plat),
+	.platdata_auto_alloc_size = sizeof(struct sdhci_plat),
 };
 
- static struct minion_uart_plat minion_plat;
+ static struct sdhci_plat minion_plat;
 
  U_BOOT_DEVICE(minion_device) = {
-   .name = "minion_uart",
+   .name = "sdhci",
    .platdata = &minion_plat,
  };
