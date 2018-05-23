@@ -1,0 +1,24 @@
+if TARGET_LOWRISC_ARIANE
+
+config SYS_CPU
+	default "ariane"
+
+config SYS_BOARD
+	default "ariane"
+
+config SYS_VENDOR
+	default "LowRISC"
+
+config SYS_SOC
+	default "lowrisc"
+
+config SYS_CONFIG_NAME
+	default "lowrisc-ariane"
+
+config ENV_SIZE
+	default 0x2000 if ENV_IS_IN_SPI_FLASH
+
+config ENV_OFFSET
+	default 0x140000 if ENV_IS_IN_SPI_FLASH
+
+endif

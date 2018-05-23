@@ -11,7 +11,12 @@
 # SPDX-License-Identifier:	GPL-2.0+
 
 ifeq ($(CROSS_COMPILE),)
+ifdef CONFIG_32BIT
 CROSS_COMPILE := riscv32-unknown-linux-gnu-
+endif
+ifdef CONFIG_64BIT
+CROSS_COMPILE := riscv64-unknown-linux-gnu-
+endif
 endif
 
 32bit-emul		:= elf32lriscv

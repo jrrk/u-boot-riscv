@@ -11,9 +11,14 @@ choice
 config TARGET_NX25_AE250
 	bool "Support nx25-ae250"
 
+config TARGET_LOWRISC_ARIANE
+	bool "Support LowRISC-Ariane"
+
 endchoice
 
 source "board/AndesTech/nx25-ae250/Kconfig"
+
+source "board/LowRISC/ariane/Kconfig"
 
 choice
 	prompt "CPU selection"

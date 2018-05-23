@@ -228,6 +228,11 @@ config DEBUG_EFI_CONSOLE
 	  U-Boot when running on top of EFI (Extensive Firmware Interface).
 	  This is a type of BIOS used by PCs.
 
+config DEBUG_UART_SBI
+	bool "RISCV SBI UART via BBL"
+	help
+	  Select this to enable a debug UART using the BBL machine mode framework.
+
 config DEBUG_UART_S5P
 	bool "Samsung S5P"
 	help
