@@ -21,4 +21,7 @@ config ENV_SIZE
 config ENV_OFFSET
 	default 0x140000 if ENV_IS_IN_SPI_FLASH
 
+config UART_SBI
+        default y
+        
 endif

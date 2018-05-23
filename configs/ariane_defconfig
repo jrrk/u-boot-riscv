@@ -184,8 +184,8 @@ CONFIG_CMD_BOOTD=y
 CONFIG_CMD_BOOTM=y
 # CONFIG_CMD_BOOTZ is not set
 # CONFIG_CMD_BOOTMENU is not set
-CONFIG_CMD_ELF=y
-CONFIG_CMD_FDT=y
+CONFIG_CMD_ELF=n
+# CONFIG_CMD_FDT is not set
 CONFIG_CMD_GO=y
 CONFIG_CMD_RUN=y
 CONFIG_CMD_IMI=y
@@ -218,7 +218,7 @@ CONFIG_CMD_CRC32=y
 # CONFIG_LOOPW is not set
 # CONFIG_CMD_MD5SUM is not set
 # CONFIG_CMD_MEMINFO is not set
-CONFIG_CMD_MEMORY=y
+# CONFIG_CMD_MEMORY is not set
 # CONFIG_CMD_MEMTEST is not set
 # CONFIG_CMD_MX_CYCLIC is not set
 # CONFIG_CMD_SHA1SUM is not set
@@ -238,9 +238,9 @@ CONFIG_CMD_MEMORY=y
 # CONFIG_CMD_CLK is not set
 # CONFIG_CMD_DEMO is not set
 # CONFIG_CMD_DFU is not set
-CONFIG_CMD_DM=y
+# CONFIG_CMD_DM is not set
 # CONFIG_CMD_FDC is not set
-CONFIG_CMD_FLASH=y
+# CONFIG_CMD_FLASH is not set
 # CONFIG_CMD_FPGAD is not set
 # CONFIG_CMD_FUSE is not set
 # CONFIG_CMD_GPIO is not set
@@ -250,9 +250,9 @@ CONFIG_CMD_FLASH=y
 # CONFIG_CMD_IO is not set
 # CONFIG_CMD_IOTRACE is not set
 # CONFIG_CMD_I2C is not set
-CONFIG_CMD_LOADB=y
-CONFIG_CMD_LOADS=y
-CONFIG_CMD_MMC=y
+# CONFIG_CMD_LOADB is not set
+# CONFIG_CMD_LOADS is not set
+# CONFIG_CMD_MMC is not set
 # CONFIG_CMD_NAND is not set
 # CONFIG_CMD_MMC_SPI is not set
 # CONFIG_CMD_ONENAND is not set
@@ -264,8 +264,8 @@ CONFIG_CMD_MMC=y
 # CONFIG_CMD_SAVES is not set
 # CONFIG_CMD_SCSI is not set
 # CONFIG_CMD_SDRAM is not set
-CONFIG_CMD_SF=y
-CONFIG_CMD_SF_TEST=y
+CONFIG_CMD_SF=n
+CONFIG_CMD_SF_TEST=n
 # CONFIG_CMD_SPI is not set
 # CONFIG_CMD_TSI148 is not set
 # CONFIG_CMD_UNIVERSE is not set
@@ -277,22 +277,20 @@ CONFIG_CMD_SF_TEST=y
 # Shell scripting commands
 #
 CONFIG_CMD_ECHO=y
-CONFIG_CMD_ITEST=y
+# CONFIG_CMD_ITEST is not set
 CONFIG_CMD_SOURCE=y
 # CONFIG_CMD_SETEXPR is not set
 
 #
 # Network commands
 #
-CONFIG_CMD_NET=y
+# CONFIG_CMD_NET is not set
 # CONFIG_CMD_TFTPPUT is not set
 # CONFIG_CMD_TFTPSRV is not set
 # CONFIG_CMD_RARP is not set
-CONFIG_CMD_DHCP=y
-# CONFIG_CMD_PXE is not set
-CONFIG_CMD_NFS=y
+# CONFIG_CMD_NFS is not set
 # CONFIG_CMD_MII is not set
-CONFIG_CMD_PING=y
+# CONFIG_CMD_PING is not set
 # CONFIG_CMD_CDP is not set
 # CONFIG_CMD_SNTP is not set
 # CONFIG_CMD_DNS is not set
@@ -310,7 +308,7 @@ CONFIG_CMD_CACHE=y
 # CONFIG_CMD_DATE is not set
 # CONFIG_CMD_TIME is not set
 # CONFIG_CMD_GETTIME is not set
-CONFIG_CMD_MISC=y
+# CONFIG_CMD_MISC is not set
 # CONFIG_CMD_TIMER is not set
 # CONFIG_CMD_QFW is not set
 # CONFIG_CMD_TERMINAL is not set
@@ -340,7 +338,7 @@ CONFIG_CMD_MISC=y
 # Filesystem commands
 #
 # CONFIG_CMD_BTRFS is not set
-CONFIG_CMD_EXT2=y
+CONFIG_CMD_EXT2=n
 # CONFIG_CMD_EXT4 is not set
 CONFIG_CMD_FAT=y
 # CONFIG_CMD_FS_GENERIC is not set
