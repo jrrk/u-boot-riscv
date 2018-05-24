@@ -246,6 +246,7 @@ static int initr_malloc(void)
 	malloc_start = gd->relocaddr - TOTAL_MALLOC_LEN;
 	mem_malloc_init((ulong)map_sysmem(malloc_start, TOTAL_MALLOC_LEN),
 			TOTAL_MALLOC_LEN);
+	debug("malloc_start = %#p\n", malloc_start);
 	return 0;
 }
 
@@ -890,6 +891,7 @@ void board_init_r(gd_t *new_gd, ulong dest_addr)
 		init_sequence_r[i] += gd->reloc_off;
 #endif
 
+        early_puts("board_init_r\n");
 	if (initcall_run_list(init_sequence_r))
 		hang();
 

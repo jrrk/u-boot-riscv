@@ -258,6 +258,8 @@ static int dm_scan_fdt_live(struct udevice *parent,
  * flag. If false bind all drivers.
  * @return 0 if OK, -ve on error
  */
+
+#if CONFIG_IS_ENABLED(OF_CONTROL)
 static int dm_scan_fdt_node(struct udevice *parent, const void *blob,
 			    int offset, bool pre_reloc_only)
 {
@@ -297,6 +299,7 @@ static int dm_scan_fdt_node(struct udevice *parent, const void *blob,
 
 	return ret;
 }
+#endif
 
 int dm_scan_fdt_dev(struct udevice *dev)
 {
@@ -331,6 +334,7 @@ static int dm_scan_fdt_node(struct udevice *parent, const void *blob,
 }
 #endif
 
+#if CONFIG_IS_ENABLED(OF_CONTROL)
 int dm_extended_scan_fdt(const void *blob, bool pre_reloc_only)
 {
 	int node, ret;
@@ -354,6 +358,7 @@ int dm_extended_scan_fdt(const void *blob, bool pre_reloc_only)
 
 	return ret;
 }
+#endif
 
 __weak int dm_scan_other(bool pre_reloc_only)
 {

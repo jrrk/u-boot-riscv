@@ -47,12 +47,9 @@
 /*
  * Physical Memory Map
  */
-#define CONFIG_NR_DRAM_BANKS	2
-#define PHYS_SDRAM_0	0x00000000		/* SDRAM Bank #1 */
-#define PHYS_SDRAM_1	\
-	(PHYS_SDRAM_0 + PHYS_SDRAM_0_SIZE)	/* SDRAM Bank #2 */
-#define PHYS_SDRAM_0_SIZE	0x20000000	/* 512 MB */
-#define PHYS_SDRAM_1_SIZE	0x20000000	/* 512 MB */
+#define CONFIG_NR_DRAM_BANKS	1
+#define PHYS_SDRAM_0	0x84000000		/* SDRAM Bank #1 */
+#define PHYS_SDRAM_0_SIZE	0x4000000	/* 64 MB */
 #define CONFIG_SYS_SDRAM_BASE	PHYS_SDRAM_0
 
 /*
@@ -61,8 +58,7 @@
 #define CONFIG_UART_SBI
 
 /* Init Stack Pointer */
-#define CONFIG_SYS_INIT_SP_ADDR		(CONFIG_SYS_SDRAM_BASE + 0x1000000 - \
-					GENERATED_GBL_DATA_SIZE)
+#define CONFIG_SYS_INIT_SP_ADDR		0x84000000 - GENERATED_GBL_DATA_SIZE
 
 /*
  * Load address and memory test area should agree with

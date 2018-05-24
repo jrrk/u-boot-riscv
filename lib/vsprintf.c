@@ -802,7 +802,7 @@ int printf(const char *fmt, ...)
 	if (i <= 0)
 		return i;
 	/* Print the string */
-	puts(printbuffer);
+	early_puts(printbuffer);
 	return i;
 }
 

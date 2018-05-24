@@ -9,7 +9,10 @@
 #define __COMMON_H_	1
 
 #ifndef __ASSEMBLY__		/* put C only stuff in this section */
-
+#define DEBUG 1
+void early_uart_init(void);
+void early_puts(const char *msg);
+// #pragma GCC poison early_puts
 typedef unsigned char		uchar;
 typedef volatile unsigned long	vu_long;
 typedef volatile unsigned short vu_short;

@@ -650,7 +650,7 @@ static int fix_fdt(void)
 #endif
 
 /* ARM calls relocate_code from its crt0.S */
-#if !defined(CONFIG_ARM) && !defined(CONFIG_SANDBOX) && \
+#if !defined(CONFIG_ARM) && !defined(CONFIG_RISCV) && !defined(CONFIG_SANDBOX) && \
 		!CONFIG_IS_ENABLED(X86_64)
 
 static int jump_to_copy(void)
@@ -680,6 +680,8 @@ static int jump_to_copy(void)
 
 	return 0;
 }
+#else
+int fake_jump_to_copy(void);
 #endif
 
 /* Record the board_init_f() bootstage (after arch_cpu_init()) */
@@ -884,9 +886,12 @@ static const init_fnc_t init_sequence_f[] = {
 #if defined(CONFIG_XTENSA)
 	clear_bss,
 #endif
-#if !defined(CONFIG_ARM) && !defined(CONFIG_SANDBOX) && \
+#if !defined(CONFIG_ARM) && !defined(CONFIG_RISCV) && !defined(CONFIG_SANDBOX) && \
 		!CONFIG_IS_ENABLED(X86_64)
 	jump_to_copy,
+#endif
+#if  defined(CONFIG_RISCV)
+        fake_jump_to_copy,
 #endif
 	NULL,
 };

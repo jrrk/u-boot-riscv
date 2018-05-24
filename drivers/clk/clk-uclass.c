@@ -155,6 +155,7 @@ static int clk_set_default_parents(struct udevice *dev)
 	return 0;
 }
 
+#if CONFIG_IS_ENABLED(OF_CONTROL)
 static int clk_set_default_rates(struct udevice *dev)
 {
 	struct clk clk;
@@ -198,6 +199,7 @@ fail:
 	free(rates);
 	return ret;
 }
+#endif
 
 int clk_set_defaults(struct udevice *dev)
 {
@@ -258,6 +260,13 @@ int clk_release_all(struct clk *clk, int count)
 	}
 
 	return 0;
+}
+
+#else
+
+int ofnode_read_u32_default(ofnode node, const char *propname, u32 def)
+{
+	return def;
 }
 
 #endif /* OF_CONTROL */

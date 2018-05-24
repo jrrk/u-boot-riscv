@@ -71,6 +71,7 @@ int lists_bind_drivers(struct udevice *parent, bool pre_reloc_only)
 	return result;
 }
 
+#if CONFIG_IS_ENABLED(OF_CONTROL) && !CONFIG_IS_ENABLED(OF_PLATDATA)
 int device_bind_driver(struct udevice *parent, const char *drv_name,
 		       const char *dev_name, struct udevice **devp)
 {
@@ -96,7 +97,6 @@ int device_bind_driver_to_node(struct udevice *parent, const char *drv_name,
 	return ret;
 }
 
-#if CONFIG_IS_ENABLED(OF_CONTROL) && !CONFIG_IS_ENABLED(OF_PLATDATA)
 /**
  * driver_check_compatible() - Check if a driver matches a compatible string
  *
