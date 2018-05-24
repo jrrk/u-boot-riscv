@@ -29,16 +29,38 @@ static void sbi_serial_putc(const char c)
 
 static int sbi_serial_tstc(void)
 {
-        return 0;
+  volatile int i;
+  int retval, rxwrcnt, rxrdcnt;
+  uint64_t stat = uart_base[0];
+  uint64_t counts = uart_base[0x400];
+#if 0
+  debug("serial status is %llx\n", stat);
+  debug("serial counts are %llx\n", counts);
+#endif  
+  rxrdcnt = counts & 0x7ff;
+  rxwrcnt = (counts >> 16) & 0x7ff;
+#if 0
+  debug("rxrdcnt=%d, rxwrcnt=%d\n", rxrdcnt, rxwrcnt);
+#endif  
+  retval = rxrdcnt != rxwrcnt;
+#if 0
+  debug("sbi_serial_tstc() returned %x\n", retval);
+  for (i = 0; i < 1000000; i++)
+    ;
+#endif  
+  return retval;
 }
 
 static int sbi_serial_getc(void)
 {
   int ch = 0;
-        while (1) {
-
-                }
-
+  do {
+    if (sbi_serial_tstc())
+      {
+        uart_base[0x200] = 0;
+        ch = uart_base[0] & 0x7f;
+      }
+  } while (!ch);
         return ch;
 }
 
