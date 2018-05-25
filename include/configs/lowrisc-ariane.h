@@ -58,7 +58,7 @@
 #define CONFIG_UART_SBI
 
 /* Init Stack Pointer */
-#define CONFIG_SYS_INIT_SP_ADDR		0x84000000 - GENERATED_GBL_DATA_SIZE
+#define CONFIG_SYS_INIT_SP_ADDR		0x90004000 - GENERATED_GBL_DATA_SIZE
 
 /*
  * Load address and memory test area should agree with
