@@ -7,25 +7,6 @@
 
 #include <common.h>
 
-#define read_csr(reg) ({ uint64_t __tmp; \
-  asm volatile ("csrr %0, " #reg : "=r"(__tmp)); \
-  __tmp; })
-
-#define write_csr(reg, val) ({ \
-  asm volatile ("csrw " #reg ", %0" :: "rK"(val)); })
-
-#define swap_csr(reg, val) ({ uint64_t __tmp; \
-  asm volatile ("csrrw %0, " #reg ", %1" : "=r"(__tmp) : "rK"(val)); \
-  __tmp; })
-
-#define set_csr(reg, bit) ({ uint64_t __tmp; \
-  asm volatile ("csrrs %0, " #reg ", %1" : "=r"(__tmp) : "rK"(bit)); \
-  __tmp; })
-
-#define clear_csr(reg, bit) ({ uint64_t __tmp; \
-  asm volatile ("csrrc %0, " #reg ", %1" : "=r"(__tmp) : "rK"(bit)); \
-  __tmp; })
-
 void flush_dcache_range(unsigned long start, unsigned long end)
 {
 }

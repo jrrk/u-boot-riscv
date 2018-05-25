@@ -1,6 +1,8 @@
 #include <common.h>
 #include <div64.h>
 
+extern int lowrisc_initialize(u8 dev_num, int base_addr);
+
 DECLARE_GLOBAL_DATA_PTR;
 
 /*
@@ -39,4 +41,16 @@ int fake_jump_to_copy(void)
 {
   early_puts("fake_jump_to_copy\n");
   board_init_r(gd, 0);
+}
+
+int board_eth_init(bd_t *bis)
+{
+  int ret;
+  env_set("ethaddr", NULL);
+  return lowrisc_initialize(0, 0x41020000);
+}
+
+unsigned long timer_read_counter(void)
+{
+  return read_csr(0xC01);
 }

@@ -58,7 +58,9 @@
 #define CONFIG_UART_SBI
 
 /* Init Stack Pointer */
-#define CONFIG_SYS_INIT_SP_ADDR		0x90004000 - GENERATED_GBL_DATA_SIZE
+
+// #define CONFIG_SYS_INIT_SP_ADDR		0x90004000 - GENERATED_GBL_DATA_SIZE
+#define CONFIG_SYS_INIT_SP_ADDR                0x84000000 - GENERATED_GBL_DATA_SIZE
 
 /*
  * Load address and memory test area should agree with
@@ -101,5 +103,24 @@
 #define CONFIG_SYS_BOOTM_LEN	(64 << 20)
 
 #define CONFIG_SYS_LDSCRIPT	"arch/riscv/cpu/ariane/u-boot.lds"
+
+#define read_csr(reg) ({ uint64_t __tmp;         \
+  asm volatile ("csrr %0, " #reg : "=r"(__tmp)); \
+  __tmp; })
+
+#define write_csr(reg, val) ({ \
+  asm volatile ("csrw " #reg ", %0" :: "rK"(val)); })
+
+#define swap_csr(reg, val) ({ uint64_t __tmp; \
+  asm volatile ("csrrw %0, " #reg ", %1" : "=r"(__tmp) : "rK"(val)); \
+  __tmp; })
+
+#define set_csr(reg, bit) ({ uint64_t __tmp; \
+  asm volatile ("csrrs %0, " #reg ", %1" : "=r"(__tmp) : "rK"(bit)); \
+  __tmp; })
+
+#define clear_csr(reg, bit) ({ uint64_t __tmp; \
+  asm volatile ("csrrc %0, " #reg ", %1" : "=r"(__tmp) : "rK"(bit)); \
+  __tmp; })
 
 #endif /* __CONFIG_H */

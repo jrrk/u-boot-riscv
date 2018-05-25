@@ -7,4 +7,4 @@
 
 extra-y	= # start.o
 
-obj-y	:= cpu.o
+obj-y	:= cpu.o eth.o
