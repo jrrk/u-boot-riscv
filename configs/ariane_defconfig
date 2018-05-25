@@ -220,9 +220,9 @@ CONFIG_CMD_CRC32=y
 # CONFIG_CMD_EEPROM is not set
 # CONFIG_LOOPW is not set
 # CONFIG_CMD_MD5SUM is not set
-# CONFIG_CMD_MEMINFO is not set
-# CONFIG_CMD_MEMORY is not set
-# CONFIG_CMD_MEMTEST is not set
+CONFIG_CMD_MEMINFO=y
+CONFIG_CMD_MEMORY=y
+CONFIG_CMD_MEMTEST=y
 # CONFIG_CMD_MX_CYCLIC is not set
 # CONFIG_CMD_SHA1SUM is not set
 # CONFIG_CMD_STRINGS is not set
@@ -354,7 +354,7 @@ CONFIG_CMD_CACHE=y
 # Debug commands
 #
 # CONFIG_CMD_BEDBUG is not set
-# CONFIG_CMD_DIAG is not set
+CONFIG_CMD_DIAG=y
 # CONFIG_CMD_IRQ is not set
 # CONFIG_CMD_KGDB is not set
 # CONFIG_CMD_LOG is not set
