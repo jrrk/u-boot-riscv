@@ -64,13 +64,15 @@
  * Load address and memory test area should agree with
  * arch/riscv/config.mk. Be careful not to overwrite U-Boot itself.
  */
-#define CONFIG_SYS_LOAD_ADDR		0x100000	/* SDRAM */
+#define CONFIG_SYS_LOAD_ADDR		0x80200000	/* SDRAM */
 
 /*
- * memtest works on 512 MB in DRAM
+ * memtest works on 1 MB in DRAM
  */
-#define CONFIG_SYS_MEMTEST_START	PHYS_SDRAM_0
-#define CONFIG_SYS_MEMTEST_END		(PHYS_SDRAM_0 + PHYS_SDRAM_0_SIZE)
+
+#define CONFIG_SYS_ALT_MEMTEST 1
+#define CONFIG_SYS_MEMTEST_START	CONFIG_SYS_LOAD_ADDR
+#define CONFIG_SYS_MEMTEST_END		(CONFIG_SYS_LOAD_ADDR + 0x100000)
 
 /* environments */
 #define CONFIG_ENV_SPI_BUS		0

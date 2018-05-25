@@ -741,7 +741,7 @@ static ulong mem_test_alt(vu_long *buf, ulong start_addr, ulong end_addr,
 	 *
 	 * Returns:     0 if the test succeeds, 1 if the test fails.
 	 */
-	num_words++;
+        //	num_words++; // I don't think this should be here - jrrk
 
 	/*
 	 * Fill memory with a known pattern.
