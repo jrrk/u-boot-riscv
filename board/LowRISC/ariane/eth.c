@@ -14,37 +14,23 @@
 
 #include "eth.h"
 
-#if 1
-static inline u64 lowrisc_reg_read(struct eth_device *dev, u32 offset)
+static u64 eth_read(struct eth_device *dev, u32 offset)
 {
-  if (0)
-	return *(volatile u64*)(dev->iobase + offset);
-  else
-    {
-      debug("lowrisc_reg_read(%lX,%X)\n", dev->iobase, offset);
-      return 0;
-    }
+  u64 ret;
+  volatile u64 *ptr = (volatile u64 *)(dev->iobase + offset);
+  
+  //  debug("eth_read(%llX)\n", ptr);
+  ret = *ptr;
+  //  debug("eth read => %lX\n", ret);
+  return ret;
 }
 
-static inline void lowrisc_reg_write(struct eth_device *dev, u32 offset, u64 val)
+static void eth_write(struct eth_device *dev, u32 offset, u64 val)
 {
-  if (0)
-	*(volatile u64*)(dev->iobase + offset) = val;
-  else
-    {
-      debug("lowrisc_reg_write(%lX,%X,%llX)\n", dev->iobase, offset, val);
-    }
-}
-#endif
-
-static u64 lowrisc_get_mac_csr(struct eth_device *dev, u8 reg)
-{
-  return 0;
-}
-
-static void lowrisc_set_mac_csr(struct eth_device *dev, u8 reg, u64 data)
-{
-
+  volatile u64 *ptr = (volatile u64 *)(dev->iobase + offset);
+  //  debug("eth_write(%llX, %lx)\n", ptr, val);
+  *ptr = val;
+  //  debug("eth written\n");
 }
 
 static int lowrisc_detect_chip(struct eth_device *dev)
@@ -72,8 +58,9 @@ static void lowrisc_handle_mac_address(struct eth_device *dev)
 
 	addrl = m[0] | (m[1] << 8) | (m[2] << 16) | (m[3] << 24);
 	addrh = m[4] | (m[5] << 8);
-        //	lowrisc_set_mac_csr(dev, ADDRL, addrl);
-        //	lowrisc_set_mac_csr(dev, ADDRH, addrh);
+
+        eth_write(dev, MACLO_OFFSET, htonl(addrl));
+        eth_write(dev, MACHI_OFFSET, htons(addrh));
 
 	printf(DRIVERNAME ": MAC %pM\n", m);
 }
@@ -104,7 +91,7 @@ static void lowrisc_phy_configure(struct eth_device *dev)
 
 static void lowrisc_enable(struct eth_device *dev)
 {
-
+	lowrisc_handle_mac_address(dev);
 }
 
 static int lowrisc_init(struct eth_device *dev, bd_t * bd)
@@ -116,12 +103,22 @@ static int lowrisc_init(struct eth_device *dev, bd_t * bd)
 	return 0;
 }
 
-static int lowrisc_send(struct eth_device *dev, void *packet, int length)
+static int lowrisc_send(struct eth_device *dev, void *packet, int len)
 {
-	u32 *data = (u32*)packet;
-	u32 tmplen;
-	u32 status;
+	u64 *alloc = (u64*)packet;
+	u32 i;
+	u32 rslt;
+        u8 *ptr = (u8*)packet;
 
+        rslt = eth_read(dev, TPLR_OFFSET);
+        if (rslt & TPLR_BUSY_MASK)
+          debug("TX Busy Status = %x, len = %d, ignoring\n", rslt, len);
+        for (i = 0; i < (((len-1)|7)+1)/8; i++)
+          {
+            eth_write(dev, TXBUFF_OFFSET+(i<<3), alloc[i]);
+          }
+        eth_write(dev, TPLR_OFFSET, len);
+        debug("lowrisc_tx: len=%d\n", len);
         return 0;
 }
 
@@ -133,12 +130,26 @@ static void lowrisc_halt(struct eth_device *dev)
 
 static int lowrisc_rx(struct eth_device *dev)
 {
-	u32 *data = (u32 *)net_rx_packets[0];
-	u32 pktlen, tmplen;
-	u32 status;
-
-        pktlen = 64;
-        net_process_received_packet(net_rx_packets[0], pktlen);
+	u64 *alloc = (u64 *)net_rx_packets[0];
+	u32 pktlen;
+        if (eth_read(dev, RSR_OFFSET) & RSR_RECV_DONE_MASK)
+          {
+            int fcs = eth_read(dev, RFCS_OFFSET);
+            int rplr = eth_read(dev, RPLR_OFFSET);
+            debug("lowrisc_rx: fcs=%x\n", fcs);
+            pktlen = (rplr & RPLR_LENGTH_MASK) - 4; /* discard FCS bytes */
+            if ((pktlen >= 14) && (fcs == 0xc704dd7b) && (pktlen <= 1536))
+              {
+                int i, rnd = (((pktlen-1)|7)+1)/8; /* round to a multiple of 8 */
+                for (i = 0; i < rnd; i++)
+                      {
+                        alloc[i] = eth_read(dev, RXBUFF_OFFSET+(i<<3));
+                      }
+                net_process_received_packet(net_rx_packets[0], pktlen);
+              }
+            /* acknowledge, even if an error occurs, to reset irq */
+            eth_write(dev, RSR_OFFSET, 0);
+          }
 
 	return 0;
 }
@@ -182,7 +193,7 @@ int lowrisc_initialize(u8 dev_num, int base_addr)
   
   dev->iobase = base_addr;
   
-  debug("dev->iobase = %x\n", dev->iobase);
+  debug("dev->iobase = %lx\n", dev->iobase);
         
   /* Try to detect chip. Will fail if not present. */
   if (lowrisc_detect_chip(dev)) {
@@ -190,19 +201,18 @@ int lowrisc_initialize(u8 dev_num, int base_addr)
     return 0;
   }
 
-#if 0
-  addrh = lowrisc_get_mac_csr(dev, ADDRH);
-  addrl = lowrisc_get_mac_csr(dev, ADDRL);
-#endif  
-  debug("MAC addr = %X:%X\n", addrh, addrl);
+  addrh = eth_read(dev, MACHI_OFFSET)&MACHI_MACADDR_MASK;
+  addrl = eth_read(dev, MACLO_OFFSET);
+
+  debug("MAC addr = %lX:%lX\n", addrh, addrl);
   if (!(addrl == 0xffffffff && addrh == 0x0000ffff)) {
     /* address is obtained from optional eeprom */
-    dev->enetaddr[0] = addrl;
-    dev->enetaddr[1] = addrl >>  8;
-    dev->enetaddr[2] = addrl >> 16;
-    dev->enetaddr[3] = addrl >> 24;
-    dev->enetaddr[4] = addrh;
-    dev->enetaddr[5] = addrh >> 8;
+    dev->enetaddr[5] = addrl;
+    dev->enetaddr[4] = addrl >>  8;
+    dev->enetaddr[3] = addrl >> 16;
+    dev->enetaddr[2] = addrl >> 24;
+    dev->enetaddr[1] = addrh;
+    dev->enetaddr[0] = addrh >> 8;
   }
   
   dev->init = lowrisc_init;
