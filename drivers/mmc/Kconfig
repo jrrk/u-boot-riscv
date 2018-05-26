@@ -299,6 +299,12 @@ config MMC_SANDBOX
 	  improves build coverage for sandbox and makes it easier to detect
 	  MMC build errors with sandbox.
 
+config MMC_LOWRISC
+	bool "LowRISC MMC support"
+	depends on RISCV
+	help
+	  This select a LowRISC MMC driver.
+
 config MMC_SDHCI
 	bool "Secure Digital Host Controller Interface support"
 	help
