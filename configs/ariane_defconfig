@@ -444,7 +444,7 @@ CONFIG_DM_DEV_READ_INLINE=y
 # CONFIG_SATA_MV is not set
 # CONFIG_SATA_SIL is not set
 # CONFIG_SATA_SIL3114 is not set
-CONFIG_BLK=y
+# CONFIG_BLK is not set
 CONFIG_HAVE_BLOCK_DEVICE=y
 # CONFIG_BLOCK_CACHE is not set
 # CONFIG_IDE is not set
@@ -628,7 +628,6 @@ CONFIG_MMC_LOWRISC=y
 # CONFIG_DM_RTC is not set
 # CONFIG_RTC_S35392A is not set
 # CONFIG_SCSI is not set
-# CONFIG_DM_SCSI is not set
 
 #
 # Serial drivers
