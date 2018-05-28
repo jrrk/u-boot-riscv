@@ -1,5 +1,6 @@
 #include <common.h>
 #include <div64.h>
+#include <asm/lowrisc-sdhi.h>
 
 extern int lowrisc_initialize(u8 dev_num, int base_addr);
 
@@ -45,7 +46,6 @@ int fake_jump_to_copy(void)
 
 int board_eth_init(bd_t *bis)
 {
-  int ret;
   env_set("ethaddr", NULL);
   return lowrisc_initialize(0, 0x41020000);
 }
@@ -53,4 +53,9 @@ int board_eth_init(bd_t *bis)
 unsigned long timer_read_counter(void)
 {
   return read_csr(0xC01);
+}
+
+int board_mmc_init(bd_t *bis)
+{
+        return lowrisc_init(0x41010000, 0, SH_SDHI_QUIRK_64BIT_BUF);
 }
