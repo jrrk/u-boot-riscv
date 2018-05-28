@@ -27,95 +27,83 @@
 
 struct lowrisc_sd_host {
   void __iomem *ioaddr;
-  int ch;
-  int bus_shift;
-  int irq;
-  int int_en, width_setting;
+  int ch, bus_shift, irq, int_en, width_setting, error, cmdidx;
   unsigned long quirks;
   unsigned char wait_int;
   unsigned char sd_error;
-  unsigned char detect_waiting;
   unsigned char app_cmd;
-  void *mmc;
-  struct mmc_command {
-    int error, opcode, flags, resp[4];
-  } *cmd;
-  struct mmc_request {
-    int app;
-    struct mmc_command *cmd;
-    struct mmc_data *data;
-  } *mrq;
+  struct mmc_cmd *cmd;
   struct mmc_data *data;
-  struct sg_mapping_iter { int length, consumed; void *addr; } sg_miter;
 };
 
 #define VERBOSE 0
-#define LOGV(l) debug l
+#define LOGV(l) // debug l
+#define LOG(l) debug l
 
 void sd_align(struct lowrisc_sd_host *host, int d_align)
 {
-  volatile uint32_t *sd_base = host->ioaddr;
+  volatile uint64_t *sd_base = host->ioaddr;
   sd_base[align_reg] = d_align;
 }
 
 void sd_clk_div(struct lowrisc_sd_host *host, int clk_div)
 {
-  volatile uint32_t *sd_base = host->ioaddr;
+  volatile uint64_t *sd_base = host->ioaddr;
   /* This section is incomplete */
   sd_base[clk_din_reg] = clk_div;
 }
 
 void sd_arg(struct lowrisc_sd_host *host, uint32_t arg)
 {
-  volatile uint32_t *sd_base = host->ioaddr;
+  volatile uint64_t *sd_base = host->ioaddr;
   sd_base[arg_reg] = arg;
 }
 
 void sd_cmd(struct lowrisc_sd_host *host, uint32_t cmd)
 {
-  volatile uint32_t *sd_base = host->ioaddr;
+  volatile uint64_t *sd_base = host->ioaddr;
   sd_base[cmd_reg] = cmd;
 }
 
 void sd_setting(struct lowrisc_sd_host *host, int setting)
 {
-  volatile uint32_t *sd_base = host->ioaddr;
+  volatile uint64_t *sd_base = host->ioaddr;
   sd_base[setting_reg] = setting;
 }
 
 void sd_cmd_start(struct lowrisc_sd_host *host, int sd_cmd)
 {
-  volatile uint32_t *sd_base = host->ioaddr;
+  volatile uint64_t *sd_base = host->ioaddr;
   sd_base[start_reg] = sd_cmd;
 }
 
 void sd_reset(struct lowrisc_sd_host *host, int sd_rst, int clk_rst, int data_rst, int cmd_rst)
 {
-  volatile uint32_t *sd_base = host->ioaddr;
+  volatile uint64_t *sd_base = host->ioaddr;
   sd_base[reset_reg] = ((sd_rst&1) << 3)|((clk_rst&1) << 2)|((data_rst&1) << 1)|((cmd_rst&1) << 0);
 }
 
 void sd_blkcnt(struct lowrisc_sd_host *host, int d_blkcnt)
 {
-  volatile uint32_t *sd_base = host->ioaddr;
+  volatile uint64_t *sd_base = host->ioaddr;
   sd_base[blkcnt_reg] = d_blkcnt&0xFFFF;
 }
 
 void sd_blksize(struct lowrisc_sd_host *host, int d_blksize)
 {
-  volatile uint32_t *sd_base = host->ioaddr;
+  volatile uint64_t *sd_base = host->ioaddr;
   sd_base[blksiz_reg] = d_blksize&0xFFF;
 }
 
 void sd_timeout(struct lowrisc_sd_host *host, int d_timeout)
 {
-  volatile uint32_t *sd_base = host->ioaddr;
+  volatile uint64_t *sd_base = host->ioaddr;
   sd_base[timeout_reg] = d_timeout;
 }
 
 void sd_irq_en(struct lowrisc_sd_host *host, int mask)
 {
-  volatile uint32_t *sd_base = host->ioaddr;
+  volatile uint64_t *sd_base = host->ioaddr;
   sd_base[irq_en_reg] = mask;
   host->int_en = mask;
 }
@@ -130,47 +118,15 @@ static void *mmc_priv(struct mmc *mmc)
 	return (void *)mmc->priv;
 }
 
-#if 0
-/* Set MMC clock / power */
-static void __lowrisc_sd_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
-{
-	struct lowrisc_sd_host *host = mmc_priv(mmc);
-	switch (ios->power_mode) {
-	case MMC_POWER_OFF:
-	  mdelay(1);
-	  break;
-	case MMC_POWER_UP:
-	  break;
-	case MMC_POWER_ON:
-#if 0
-	  mdelay(20);
-#endif          
-	  break;
-	}
-
-	switch (ios->bus_width) {
-	case MMC_BUS_WIDTH_1:
-	  host->width_setting = 0;
-	  break;
-	case MMC_BUS_WIDTH_4:
-	  host->width_setting = 0x20;
-	  break;
-	}
-}
-#endif
-
 static void lowrisc_sd_set_led(struct lowrisc_sd_host *host, unsigned char state)
 {
-  volatile uint32_t *sd_base = host->ioaddr;
+  volatile uint64_t *sd_base = host->ioaddr;
   sd_base[led_reg] = state;
 }
 
 static void lowrisc_sd_finish_request(struct lowrisc_sd_host *host)
 {
-	struct mmc_request *mrq = host->mrq;
-
 	/* Write something to end the command */
-	host->mrq = NULL;
 	host->cmd = NULL;
 	host->data = NULL;
 
@@ -178,63 +134,12 @@ static void lowrisc_sd_finish_request(struct lowrisc_sd_host *host)
 	sd_cmd_start(host, 0);
 	sd_reset(host, 0,1,1,1);
 	lowrisc_sd_set_led(host, 0);
-	mmc_request_done(host->mmc, mrq);
 }
-
-#ifdef THREADED
-static irqreturn_t lowrisc_sd_thread_irq(int irq, void *dev_id)
-{
-	struct lowrisc_sd_host *host = dev_id;
-        volatile uint32_t *sd_base = host->ioaddr;
-	struct mmc_data *data = host->data;
-	struct sg_mapping_iter *sg_miter = &host->sg_miter;
-	unsigned short *buf;
-	int count;
-	unsigned long flags;
-
-	LOGV (("lowrisc_sd_thread_irq\n"));
-
-	if (!data) {
-		dev_warn(&host->pdev->dev, "Spurious Data IRQ\n");
-		if (host->cmd) {
-			host->cmd->error = -EIO;
-			lowrisc_sd_finish_request(host);
-		}
-		return IRQ_NONE;
-	}
-	spin_lock_irqsave(&host->lock, flags);
-	if (!sg_miter_next(sg_miter))
-		goto done;
-
-	buf = sg_miter->addr;
-	/* Ensure we dont read more than one block. The chip will interrupt us
-	 * When the next block is available.
-	 */
-	count = sg_miter->length;
-	if (count > data->blocksize)
-		count = data->blocksize;
-
-LOG (("count: %08x, flags %08x\n", count,
-      data->flags));
-	/* Transfer the data */
-	if (data->flags & MMC_DATA_READ)
-          memcpy(buf, (void*)&sd_base[data_buffer_offset], count >> 2);
-	else
-          memcpy((void*)&sd_base[data_buffer_offset], buf, count >> 2);
-
-	sg_miter->consumed = count;
-	sg_miter_stop(sg_miter);
-done:
-	spin_unlock_irqrestore(&host->lock, flags);
-
-	return IRQ_HANDLED;
-}
-#endif
   
 static void lowrisc_sd_cmd_irq(struct lowrisc_sd_host *host)
 {
-	struct mmc_command *cmd = host->cmd;
-        volatile uint32_t *sd_base = host->ioaddr;
+	struct mmc_cmd *cmd = host->cmd;
+        volatile uint64_t *sd_base = host->ioaddr;
 
 	LOGV (("lowrisc_sd_cmd_irq\n"));
 	
@@ -245,23 +150,23 @@ static void lowrisc_sd_cmd_irq(struct lowrisc_sd_host *host)
 	host->cmd = NULL;
 
         LOGV (("lowrisc_sd_cmd_irq IRQ line %d\n", __LINE__));
-	if (cmd->flags & MMC_RSP_PRESENT && cmd->flags & MMC_RSP_136) {
+	if (cmd->resp_type & MMC_RSP_PRESENT && cmd->resp_type & MMC_RSP_136) {
 	  int i;
 	  LOGV (("lowrisc_sd_cmd_irq IRQ line %d\n", __LINE__));
 		/* R2 */
 	  for (i = 0;i < 4;i++)
 	    {
-	    cmd->resp[i] = sd_base[resp0 + (3-i)] << 8;
+	    cmd->response[i] = sd_base[resp0 + (3-i)] << 8;
 	    if (i != 3)
-	      cmd->resp[i] |= sd_base[resp0 + (2-i)] >> 24;
+	      cmd->response[i] |= sd_base[resp0 + (2-i)] >> 24;
 	    } 
-	} else if (cmd->flags & MMC_RSP_PRESENT) {
+	} else if (cmd->resp_type & MMC_RSP_PRESENT) {
 	  LOGV (("lowrisc_sd_cmd_irq IRQ line %d\n", __LINE__));
 		/* R1, R1B, R3, R6, R7 */
-	  cmd->resp[0] = sd_base[resp0];
+	  cmd->response[0] = sd_base[resp0];
 	}
 
-LOGV (("Command IRQ complete %d %d %x\n", cmd->opcode, cmd->error, cmd->flags));
+LOGV (("Command IRQ complete %d %d %x\n", cmd->cmdidx, host->error, cmd->resp_type));
 
 	/* If there is data to handle we will
 	 * finish the request in the mmc_data_end_irq handler.*/
@@ -276,13 +181,14 @@ LOGV (("Command IRQ complete %d %d %x\n", cmd->opcode, cmd->error, cmd->flags));
 static void lowrisc_sd_data_end_irq(struct lowrisc_sd_host *host)
 {
 	struct mmc_data *data = host->data;
-        volatile uint32_t *sd_base = host->ioaddr;
+        volatile uint64_t *sd_base = host->ioaddr;
 	unsigned long flags;
 	size_t blksize, len, chunk;
 	u32 uninitialized_var(scratch);
 	u8 *buf;
 	int i = 0;
-	
+	u64 scratch64;
+        
 	LOGV (("lowrisc_sd_data_end_irq\n"));
 
 	host->data = NULL;
@@ -298,23 +204,24 @@ static void lowrisc_sd_data_end_irq(struct lowrisc_sd_host *host)
 	    blksize = data->blocksize;
 	    chunk = 0;
 
-	    local_irq_save(flags);
-
 	    while (blksize) {
-	      int idx = 0;
-	      BUG_ON(!sg_miter_next(&host->sg_miter));
-	  
-	      len = min(host->sg_miter.length, blksize);
+	      int idx = 0;	  
+	      len = blksize;
 	  
 	      blksize -= len;
-	      host->sg_miter.consumed = len;
-	  
-	      buf = host->sg_miter.addr;
+
+              LOGV(("host->data->dest=%p\n", data->dest));
+	      buf = data->dest;
 	  
 	      while (len) {
 		if (chunk == 0) {
-		  scratch = __be32_to_cpu(sd_base[0x2000 + i++]);
-		  chunk = 4;
+                  scratch64 = sd_base[0x1000 + i++];
+                  LOGV(("sd_data(%d) = 0x%.016llX\n", host->cmdidx, scratch64));
+		  scratch = __be32_to_cpu((u32)scratch64);
+		  chunk = 8;
+                }
+		else if (chunk == 4) {
+		  scratch = __be32_to_cpu(scratch64>>32);                  
 		}
 		
 		buf[idx] = scratch & 0xFF;	    
@@ -324,9 +231,6 @@ static void lowrisc_sd_data_end_irq(struct lowrisc_sd_host *host)
 		len--;
 	      }
 	    }
-	    sg_miter_stop(&host->sg_miter);
-
-	    local_irq_restore(flags);
 	  }
 
 	LOGV (("Completed data request xfr=%d\n", data->blocks));
@@ -339,21 +243,20 @@ static void lowrisc_sd_data_end_irq(struct lowrisc_sd_host *host)
 static irqreturn_t lowrisc_sd_irq(int irq, void *dev_id)
 {
 	struct lowrisc_sd_host *host = dev_id;
-        volatile uint32_t *sd_base = host->ioaddr;
+        volatile uint64_t *sd_base = host->ioaddr;
 	u32 int_reg, int_status;
 	int error = 0, ret = IRQ_HANDLED;
 
-	spin_lock(&host->lock);
 	int_status = sd_base[irq_stat_resp];
 	int_reg = int_status & host->int_en;
+
+	LOGV (("lowrisc_sd IRQ status:%x enabled:%x\n", int_status, host->int_en));
 
 	/* nothing to do: it's not our IRQ */
 	if (!int_reg) {
 		ret = IRQ_NONE;
 		goto irq_end;
 	}
-
-	LOGV (("lowrisc_sd IRQ status:%x enabled:%x\n", int_status, host->int_en));
 
 	if (sd_base[wait_resp] >= sd_base[timeout_resp]) {
 		error = -ETIMEDOUT;
@@ -368,7 +271,7 @@ static irqreturn_t lowrisc_sd_irq(int irq, void *dev_id)
 	if (error) {
 	  LOGV (("lowrisc_sd IRQ line %d\n", __LINE__));
 		if (host->cmd)
-			host->cmd->error = error;
+			host->error = error;
 
 		if (error == -ETIMEDOUT) {
 		  LOGV (("lowrisc_sd IRQ line %d\n", __LINE__));
@@ -390,7 +293,6 @@ static irqreturn_t lowrisc_sd_irq(int irq, void *dev_id)
 	    int mask = (host->int_en & ~SD_CARD_CARD_REMOVED_0) | SD_CARD_CARD_INSERTED_0;
 	    sd_irq_en(host, mask);
 	    LOG (("Card removed, mask changed to %d\n", mask));
-	    mmc_detect_change(host->mmc, 1);
 	  }
 	
         LOGV (("lowrisc_sd IRQ line %d\n", __LINE__));
@@ -400,7 +302,6 @@ static irqreturn_t lowrisc_sd_irq(int irq, void *dev_id)
 	    sd_irq_en(host, mask);
 	    LOG (("Card inserted, mask changed to %d\n", mask));
 	    lowrisc_sd_init(host);
-	    mmc_detect_change(host->mmc, 1);
 	  }
 
         LOGV (("lowrisc_sd IRQ line %d\n", __LINE__));
@@ -422,37 +323,35 @@ static irqreturn_t lowrisc_sd_irq(int irq, void *dev_id)
 	}
 irq_end:
         sd_irq_en(host, host->int_en);
-	spin_unlock(&host->lock);
 	return ret;
 }
 
-static void lowrisc_sd_start_cmd(struct lowrisc_sd_host *host, struct mmc_command *cmd, int arg)
+static void lowrisc_sd_start_cmd(struct lowrisc_sd_host *host, struct mmc_cmd *cmd)
 {
   int setting = 0;
   int timeout = 1000000;
   struct mmc_data *data = host->data;
-  volatile uint32_t *sd_base = host->ioaddr;
-  spin_lock(&host->lock);
+  volatile uint64_t *sd_base = host->ioaddr;
 
-  LOGV (("Command opcode: %d\n", cmd->opcode));
+  LOGV (("Command opcode: %d\n", cmd->cmdidx));
 /*
-  if (cmd->opcode == MMC_STOP_TRANSMISSION) {
+  if (cmd->opc == MMC_STOP_TRANSMISSION) {
     sd_cmd(host, SD_STOPINT_ISSUE_CMD12);
 
-    cmd->resp[0] = cmd->opcode;
-    cmd->resp[1] = 0;
-    cmd->resp[2] = 0;
-    cmd->resp[3] = 0;
+    cmd->response[0] = cmd->opc;
+    cmd->response[1] = 0;
+    cmd->response[2] = 0;
+    cmd->response[3] = 0;
     
     lowrisc_sd_finish_request(host);
     return;
   }
 */
-  if (!(cmd->flags & MMC_RSP_PRESENT))
+  if (!(cmd->resp_type & MMC_RSP_PRESENT))
     setting = 0;
-  else if (cmd->flags & MMC_RSP_136)
+  else if (cmd->resp_type & MMC_RSP_136)
     setting = 3;
-  else if (cmd->flags & MMC_RSP_BUSY)
+  else if (cmd->resp_type & MMC_RSP_BUSY)
     setting = 1;
   else
     setting = 1;
@@ -460,24 +359,28 @@ static void lowrisc_sd_start_cmd(struct lowrisc_sd_host *host, struct mmc_comman
   
   host->cmd = cmd;
   
-  if (cmd->opcode == R1_APP_CMD)
+  if (cmd->cmdidx == R1_APP_CMD)
     {
       /* placeholder */
     }
   
-  if (cmd->opcode == MMC_CMD_GO_IDLE_STATE)
+  if (cmd->cmdidx == MMC_CMD_GO_IDLE_STATE)
     {
       /* placeholder */
     }
 
-  LOGV (("testing data flags\n"));
+  LOGV (("testing resp flags %X\n", setting));
   if (data) {
     setting |= 0x4;
     if (data->flags & MMC_DATA_READ)
+      {
       setting |= 0x10;
+      LOG(("data_read, blksz=%d\n", data->blocksize));
+      }
     else
       {
       setting |= 0x8;
+      LOG(("data_write, blksz=%d\n", data->blocksize));
       }
   }
 
@@ -485,8 +388,8 @@ static void lowrisc_sd_start_cmd(struct lowrisc_sd_host *host, struct mmc_comman
   /* Send the command */
   sd_reset(host, 0,1,0,1);
   sd_align(host, 0);
-  sd_arg(host, arg);
-  sd_cmd(host, cmd->opcode);
+  sd_arg(host, cmd->cmdarg);
+  sd_cmd(host, cmd->cmdidx);
   sd_setting(host, setting);
   sd_cmd_start(host, 0);
   sd_reset(host, 0,1,1,1);
@@ -495,7 +398,6 @@ static void lowrisc_sd_start_cmd(struct lowrisc_sd_host *host, struct mmc_comman
   sd_cmd_start(host, 1);
   LOGV (("enabling interrupt\n"));
   sd_irq_en(host, sd_base[irq_en_resp] | SD_CARD_RESP_END);
-spin_unlock(&host->lock);
  LOGV (("leaving lowrisc_sd_start_cmd\n"));
 }
 
@@ -514,9 +416,9 @@ static void lowrisc_sd_start_data(struct lowrisc_sd_host *host, struct mmc_data 
 
         if (!(data->flags & MMC_DATA_READ))
 	  {
-        volatile uint32_t *sd_base = host->ioaddr;
+        volatile uint64_t *sd_base = host->ioaddr;
 	struct mmc_data *data = host->data;
-	if (sg_miter_next(&host->sg_miter))
+
 {
   size_t blksize, len, chunk;
   u32 scratch, i = 0;
@@ -527,12 +429,10 @@ static void lowrisc_sd_start_data(struct lowrisc_sd_host *host, struct mmc_data 
 	chunk = 0;
 	scratch = 0;
 
-	len = min(host->sg_miter.length, blksize);
+	len = blksize;
 
 	blksize -= len;
-	host->sg_miter.consumed = len;
-
-	buf = host->sg_miter.addr;
+	buf = data->src;
 
 	while (len) {
 			scratch |= (u32)*buf << (chunk * 8);
@@ -548,70 +448,37 @@ static void lowrisc_sd_start_data(struct lowrisc_sd_host *host, struct mmc_data 
 			}
 	}
 
-	sg_miter_stop(&host->sg_miter);
 	  }
         }
 }
 
-/* Process requests from the MMC layer */
-static void lowrisc_sd_request(struct mmc_host *mmc, struct mmc_request *mrq)
-{
-	struct lowrisc_sd_host *host = mmc_priv(mmc);
-        volatile uint32_t *sd_base = host->ioaddr;
-	unsigned long flags;
-
-	/* abort if card not present */
-	if (sd_base[detect_resp]) {
-		mrq->cmd->error = -ENOMEDIUM;
-		mmc_request_done(mmc, mrq);
-		return;
-	}
-
-	spin_lock_irqsave(&host->lock, flags);
-
-	WARN_ON(host->mrq != NULL);
-
-	host->mrq = mrq;
-
-	if (mrq->data)
-		lowrisc_sd_start_data(host, mrq->data);
-
-	lowrisc_sd_set_led(host, 1);
-
-	lowrisc_sd_start_cmd(host, mrq->cmd, mrq->app);
-
-	spin_unlock_irqrestore(&host->lock, flags);
-}
-
-static void lowrisc_sd_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+static void lowrisc_sd_set_ios(struct mmc *mmc, struct mmc_ios *ios)
 {
 	struct lowrisc_sd_host *host = mmc_priv(mmc);
 	unsigned long flags;
 
-	spin_lock_irqsave(&host->lock, flags);
 	__lowrisc_sd_set_ios(mmc, ios);
-	spin_unlock_irqrestore(&host->lock, flags);
 }
 
-static int lowrisc_sd_get_ro(struct mmc_host *mmc)
+static int lowrisc_sd_get_ro(struct mmc *mmc)
 {
 	struct lowrisc_sd_host *host = mmc_priv(mmc);
-        volatile uint32_t *sd_base = host->ioaddr;
+        volatile uint64_t *sd_base = host->ioaddr;
 	return sd_base[detect_resp];
 }
 
-static int lowrisc_sd_get_cd(struct mmc_host *mmc)
+static int lowrisc_sd_get_cd(struct mmc *mmc)
 {
 	struct lowrisc_sd_host *host = mmc_priv(mmc);
-        volatile uint32_t *sd_base = host->ioaddr;
+        volatile uint64_t *sd_base = host->ioaddr;
 
 	return !sd_base[detect_resp];
 }
 
-static int lowrisc_sd_card_busy(struct mmc_host *mmc)
+static int lowrisc_sd_card_busy(struct mmc *mmc)
 {
 	struct lowrisc_sd_host *host = mmc_priv(mmc);
-        volatile uint32_t *sd_base = host->ioaddr;
+        volatile uint64_t *sd_base = host->ioaddr;
 	return sd_base[resp0] >> 31;
 }
 
@@ -637,101 +504,6 @@ static inline u16 lowrisc_readw(struct lowrisc_sd_host *host, int reg)
   return 0;
 }
 
-static void lowrisc_detect(struct lowrisc_sd_host *host)
-{
-  debug("lowrisc_detect(%p);\n", host);
-	lowrisc_writew(host, SDHI_OPTION,
-		       OPT_BUS_WIDTH_1 | lowrisc_readw(host, SDHI_OPTION));
-
-	host->detect_waiting = 0;
-}
-
-static int lowrisc_intr(void *dev_id)
-{
-	struct lowrisc_sd_host *host = dev_id;
-	int state1 = 0, state2 = 0;
-
-	state1 = lowrisc_readw(host, SDHI_INFO1);
-	state2 = lowrisc_readw(host, SDHI_INFO2);
-
-	debug("%s: state1 = %x, state2 = %x\n", __func__, state1, state2);
-
-	/* CARD Insert */
-	if (state1 & INFO1_CARD_IN) {
-		lowrisc_writew(host, SDHI_INFO1, ~INFO1_CARD_IN);
-		if (!host->detect_waiting) {
-			host->detect_waiting = 1;
-			lowrisc_detect(host);
-		}
-		lowrisc_writew(host, SDHI_INFO1_MASK, INFO1M_RESP_END |
-			       INFO1M_ACCESS_END | INFO1M_CARD_IN |
-			       INFO1M_DATA3_CARD_RE | INFO1M_DATA3_CARD_IN);
-		return -EAGAIN;
-	}
-	/* CARD Removal */
-	if (state1 & INFO1_CARD_RE) {
-		lowrisc_writew(host, SDHI_INFO1, ~INFO1_CARD_RE);
-		if (!host->detect_waiting) {
-			host->detect_waiting = 1;
-			lowrisc_detect(host);
-		}
-		lowrisc_writew(host, SDHI_INFO1_MASK, INFO1M_RESP_END |
-			       INFO1M_ACCESS_END | INFO1M_CARD_RE |
-			       INFO1M_DATA3_CARD_RE | INFO1M_DATA3_CARD_IN);
-		lowrisc_writew(host, SDHI_SDIO_INFO1_MASK, SDIO_INFO1M_ON);
-		lowrisc_writew(host, SDHI_SDIO_MODE, SDIO_MODE_OFF);
-		return -EAGAIN;
-	}
-
-	if (state2 & INFO2_ALL_ERR) {
-		lowrisc_writew(host, SDHI_INFO2,
-			       (unsigned short)~(INFO2_ALL_ERR));
-		lowrisc_writew(host, SDHI_INFO2_MASK,
-			       INFO2M_ALL_ERR |
-			       lowrisc_readw(host, SDHI_INFO2_MASK));
-		host->sd_error = 1;
-		host->wait_int = 1;
-		return 0;
-	}
-	/* Respons End */
-	if (state1 & INFO1_RESP_END) {
-		lowrisc_writew(host, SDHI_INFO1, ~INFO1_RESP_END);
-		lowrisc_writew(host, SDHI_INFO1_MASK,
-			       INFO1M_RESP_END |
-			       lowrisc_readw(host, SDHI_INFO1_MASK));
-		host->wait_int = 1;
-		return 0;
-	}
-	/* SD_BUF Read Enable */
-	if (state2 & INFO2_BRE_ENABLE) {
-		lowrisc_writew(host, SDHI_INFO2, ~INFO2_BRE_ENABLE);
-		lowrisc_writew(host, SDHI_INFO2_MASK,
-			       INFO2M_BRE_ENABLE | INFO2M_BUF_ILL_READ |
-			       lowrisc_readw(host, SDHI_INFO2_MASK));
-		host->wait_int = 1;
-		return 0;
-	}
-	/* SD_BUF Write Enable */
-	if (state2 & INFO2_BWE_ENABLE) {
-		lowrisc_writew(host, SDHI_INFO2, ~INFO2_BWE_ENABLE);
-		lowrisc_writew(host, SDHI_INFO2_MASK,
-			       INFO2_BWE_ENABLE | INFO2M_BUF_ILL_WRITE |
-			       lowrisc_readw(host, SDHI_INFO2_MASK));
-		host->wait_int = 1;
-		return 0;
-	}
-	/* Access End */
-	if (state1 & INFO1_ACCESS_END) {
-		lowrisc_writew(host, SDHI_INFO1, ~INFO1_ACCESS_END);
-		lowrisc_writew(host, SDHI_INFO1_MASK,
-			       INFO1_ACCESS_END |
-			       lowrisc_readw(host, SDHI_INFO1_MASK));
-		host->wait_int = 1;
-		return 0;
-	}
-	return -EAGAIN;
-}
-
 static int lowrisc_wait_interrupt_flag(struct lowrisc_sd_host *host)
 {
 	int timeout = 10000000;
@@ -743,7 +515,7 @@ static int lowrisc_wait_interrupt_flag(struct lowrisc_sd_host *host)
 			return 0;
 		}
 
-		if (!lowrisc_intr(host))
+		if (!lowrisc_sd_irq(1, host))
 			break;
 
 		udelay(1);	/* 1 usec */
@@ -756,98 +528,16 @@ static int lowrisc_clock_control(struct lowrisc_sd_host *host, unsigned long clk
 {
 	u32 clkdiv, i, timeout;
 
-	if (lowrisc_readw(host, SDHI_INFO2) & (1 << 14)) {
-		printf(DRIVER_NAME": Busy state ! Cannot change the clock\n");
-		return -EBUSY;
-	}
-
-	lowrisc_writew(host, SDHI_CLK_CTRL,
-		       ~CLK_ENABLE & lowrisc_readw(host, SDHI_CLK_CTRL));
-
-	if (clk == 0)
-		return -EIO;
-
-	clkdiv = 0x80;
-	i = CONFIG_SH_SDHI_FREQ >> (0x8 + 1);
-	for (; clkdiv && clk >= (i << 1); (clkdiv >>= 1))
-		i <<= 1;
-
-	lowrisc_writew(host, SDHI_CLK_CTRL, clkdiv);
-
-	timeout = 100000;
-	/* Waiting for SD Bus busy to be cleared */
-	while (timeout--) {
-		if ((lowrisc_readw(host, SDHI_INFO2) & 0x2000))
-			break;
-	}
-
-	if (timeout)
-		lowrisc_writew(host, SDHI_CLK_CTRL,
-			       CLK_ENABLE | lowrisc_readw(host, SDHI_CLK_CTRL));
-	else
-		return -EBUSY;
-
-	return 0;
+        return -EIO;
 }
 
 static int lowrisc_sync_reset(struct lowrisc_sd_host *host)
 {
-	u32 timeout;
-	lowrisc_writew(host, SDHI_SOFT_RST, SOFT_RST_ON);
-	lowrisc_writew(host, SDHI_SOFT_RST, SOFT_RST_OFF);
-	lowrisc_writew(host, SDHI_CLK_CTRL,
-		       CLK_ENABLE | lowrisc_readw(host, SDHI_CLK_CTRL));
-
-	timeout = 100000;
-	while (timeout--) {
-		if (!(lowrisc_readw(host, SDHI_INFO2) & INFO2_CBUSY))
-			break;
-		udelay(100);
-	}
-
-	if (!timeout)
-		return -EBUSY;
-
-	if (host->quirks & SH_SDHI_QUIRK_16BIT_BUF)
-		lowrisc_writew(host, SDHI_HOST_MODE, 1);
-
+	sd_reset(host, 0,1,0,1);
+	sd_cmd_start(host, 0);
+	sd_reset(host, 0,1,1,1);
+	lowrisc_sd_set_led(host, 0);
 	return 0;
-}
-
-static int lowrisc_error_manage(struct lowrisc_sd_host *host)
-{
-	unsigned short e_state1, e_state2;
-	int ret;
-
-	host->sd_error = 0;
-	host->wait_int = 0;
-
-	e_state1 = lowrisc_readw(host, SDHI_ERR_STS1);
-	e_state2 = lowrisc_readw(host, SDHI_ERR_STS2);
-	if (e_state2 & ERR_STS2_SYS_ERROR) {
-		if (e_state2 & ERR_STS2_RES_STOP_TIMEOUT)
-			ret = -ETIMEDOUT;
-		else
-			ret = -EILSEQ;
-		debug("%s: ERR_STS2 = %04x\n",
-		      DRIVER_NAME, lowrisc_readw(host, SDHI_ERR_STS2));
-		lowrisc_sync_reset(host);
-
-		lowrisc_writew(host, SDHI_INFO1_MASK,
-			       INFO1M_DATA3_CARD_RE | INFO1M_DATA3_CARD_IN);
-		return ret;
-	}
-	if (e_state1 & ERR_STS1_CRC_ERROR || e_state1 & ERR_STS1_CMD_ERROR)
-		ret = -EILSEQ;
-	else
-		ret = -ETIMEDOUT;
-
-	debug("%s: ERR_STS1 = %04x\n",
-	      DRIVER_NAME, lowrisc_readw(host, SDHI_ERR_STS1));
-	lowrisc_sync_reset(host);
-	lowrisc_writew(host, SDHI_INFO1_MASK,
-		       INFO1M_DATA3_CARD_RE | INFO1M_DATA3_CARD_IN);
-	return ret;
 }
 
 static int lowrisc_single_read(struct lowrisc_sd_host *host, struct mmc_data *data)
@@ -864,29 +554,6 @@ static int lowrisc_single_read(struct lowrisc_sd_host *host, struct mmc_data *da
 	}
 
 	host->wait_int = 0;
-	lowrisc_writew(host, SDHI_INFO2_MASK,
-		       ~(INFO2M_BRE_ENABLE | INFO2M_BUF_ILL_READ) &
-		       lowrisc_readw(host, SDHI_INFO2_MASK));
-	lowrisc_writew(host, SDHI_INFO1_MASK,
-		       ~INFO1M_ACCESS_END &
-		       lowrisc_readw(host, SDHI_INFO1_MASK));
-	time = lowrisc_wait_interrupt_flag(host);
-	if (time == 0 || host->sd_error != 0)
-		return lowrisc_error_manage(host);
-
-	host->wait_int = 0;
-	blocksize = lowrisc_readw(host, SDHI_SIZE);
-	if (host->quirks & SH_SDHI_QUIRK_64BIT_BUF)
-		for (i = 0; i < blocksize / 8; i++)
-			*q++ = lowrisc_readq(host, SDHI_BUF0);
-	else
-		for (i = 0; i < blocksize / 2; i++)
-			*p++ = lowrisc_readw(host, SDHI_BUF0);
-
-	time = lowrisc_wait_interrupt_flag(host);
-	if (time == 0 || host->sd_error != 0)
-		return lowrisc_error_manage(host);
-
 	host->wait_int = 0;
 	return 0;
 }
@@ -894,7 +561,7 @@ static int lowrisc_single_read(struct lowrisc_sd_host *host, struct mmc_data *da
 static int lowrisc_multi_read(struct lowrisc_sd_host *host, struct mmc_data *data)
 {
 	long time;
-	unsigned short blocksize, i, sec;
+	unsigned short blocksize, sec;
 	unsigned short *p = (unsigned short *)data->dest;
 	u64 *q = (u64 *)data->dest;
 
@@ -909,22 +576,6 @@ static int lowrisc_multi_read(struct lowrisc_sd_host *host, struct mmc_data *dat
 
 	host->wait_int = 0;
 	for (sec = 0; sec < data->blocks; sec++) {
-		lowrisc_writew(host, SDHI_INFO2_MASK,
-			       ~(INFO2M_BRE_ENABLE | INFO2M_BUF_ILL_READ) &
-			       lowrisc_readw(host, SDHI_INFO2_MASK));
-
-		time = lowrisc_wait_interrupt_flag(host);
-		if (time == 0 || host->sd_error != 0)
-			return lowrisc_error_manage(host);
-
-		host->wait_int = 0;
-		blocksize = lowrisc_readw(host, SDHI_SIZE);
-		if (host->quirks & SH_SDHI_QUIRK_64BIT_BUF)
-			for (i = 0; i < blocksize / 8; i++)
-				*q++ = lowrisc_readq(host, SDHI_BUF0);
-		else
-			for (i = 0; i < blocksize / 2; i++)
-				*p++ = lowrisc_readw(host, SDHI_BUF0);
 	}
 
 	return 0;
@@ -948,30 +599,6 @@ static int lowrisc_single_write(struct lowrisc_sd_host *host,
 	      __func__, data->blocks, data->blocksize);
 
 	host->wait_int = 0;
-	lowrisc_writew(host, SDHI_INFO2_MASK,
-		       ~(INFO2M_BWE_ENABLE | INFO2M_BUF_ILL_WRITE) &
-		       lowrisc_readw(host, SDHI_INFO2_MASK));
-	lowrisc_writew(host, SDHI_INFO1_MASK,
-		       ~INFO1M_ACCESS_END &
-		       lowrisc_readw(host, SDHI_INFO1_MASK));
-
-	time = lowrisc_wait_interrupt_flag(host);
-	if (time == 0 || host->sd_error != 0)
-		return lowrisc_error_manage(host);
-
-	host->wait_int = 0;
-	blocksize = lowrisc_readw(host, SDHI_SIZE);
-	if (host->quirks & SH_SDHI_QUIRK_64BIT_BUF)
-		for (i = 0; i < blocksize / 8; i++)
-			lowrisc_writeq(host, SDHI_BUF0, *q++);
-	else
-		for (i = 0; i < blocksize / 2; i++)
-			lowrisc_writew(host, SDHI_BUF0, *p++);
-
-	time = lowrisc_wait_interrupt_flag(host);
-	if (time == 0 || host->sd_error != 0)
-		return lowrisc_error_manage(host);
-
 	host->wait_int = 0;
 	return 0;
 }
@@ -988,73 +615,9 @@ static int lowrisc_multi_write(struct lowrisc_sd_host *host, struct mmc_data *da
 
 	host->wait_int = 0;
 	for (sec = 0; sec < data->blocks; sec++) {
-		lowrisc_writew(host, SDHI_INFO2_MASK,
-			       ~(INFO2M_BWE_ENABLE | INFO2M_BUF_ILL_WRITE) &
-			       lowrisc_readw(host, SDHI_INFO2_MASK));
-
-		time = lowrisc_wait_interrupt_flag(host);
-		if (time == 0 || host->sd_error != 0)
-			return lowrisc_error_manage(host);
-
-		host->wait_int = 0;
-		blocksize = lowrisc_readw(host, SDHI_SIZE);
-		if (host->quirks & SH_SDHI_QUIRK_64BIT_BUF)
-			for (i = 0; i < blocksize / 8; i++)
-				lowrisc_writeq(host, SDHI_BUF0, *q++);
-		else
-			for (i = 0; i < blocksize / 2; i++)
-				lowrisc_writew(host, SDHI_BUF0, *p++);
 	}
 
 	return 0;
-}
-
-static void lowrisc_get_response(struct lowrisc_sd_host *host, struct mmc_cmd *cmd)
-{
-	unsigned short i, j, cnt = 1;
-	unsigned short resp[8];
-
-	if (cmd->resp_type & MMC_RSP_136) {
-		cnt = 4;
-		resp[0] = lowrisc_readw(host, SDHI_RSP00);
-		resp[1] = lowrisc_readw(host, SDHI_RSP01);
-		resp[2] = lowrisc_readw(host, SDHI_RSP02);
-		resp[3] = lowrisc_readw(host, SDHI_RSP03);
-		resp[4] = lowrisc_readw(host, SDHI_RSP04);
-		resp[5] = lowrisc_readw(host, SDHI_RSP05);
-		resp[6] = lowrisc_readw(host, SDHI_RSP06);
-		resp[7] = lowrisc_readw(host, SDHI_RSP07);
-
-		/* SDHI REGISTER SPECIFICATION */
-		for (i = 7, j = 6; i > 0; i--) {
-			resp[i] = (resp[i] << 8) & 0xff00;
-			resp[i] |= (resp[j--] >> 8) & 0x00ff;
-		}
-		resp[0] = (resp[0] << 8) & 0xff00;
-	} else {
-		resp[0] = lowrisc_readw(host, SDHI_RSP00);
-		resp[1] = lowrisc_readw(host, SDHI_RSP01);
-	}
-
-#if defined(__BIG_ENDIAN_BITFIELD)
-	if (cnt == 4) {
-		cmd->response[0] = (resp[6] << 16) | resp[7];
-		cmd->response[1] = (resp[4] << 16) | resp[5];
-		cmd->response[2] = (resp[2] << 16) | resp[3];
-		cmd->response[3] = (resp[0] << 16) | resp[1];
-	} else {
-		cmd->response[0] = (resp[0] << 16) | resp[1];
-	}
-#else
-	if (cnt == 4) {
-		cmd->response[0] = (resp[7] << 16) | resp[6];
-		cmd->response[1] = (resp[5] << 16) | resp[4];
-		cmd->response[2] = (resp[3] << 16) | resp[2];
-		cmd->response[3] = (resp[1] << 16) | resp[0];
-	} else {
-		cmd->response[0] = (resp[1] << 16) | resp[0];
-	}
-#endif /* __BIG_ENDIAN_BITFIELD */
 }
 
 static unsigned short lowrisc_set_cmd(struct lowrisc_sd_host *host,
@@ -1120,106 +683,42 @@ static int lowrisc_start_cmd(struct lowrisc_sd_host *host,
 	unsigned short shcmd, opc = cmd->cmdidx;
 	int ret = 0;
 	unsigned long timeout;
-
-	debug("opc = %d, arg = %x, resp_type = %x\n",
-	      opc, cmd->cmdarg, cmd->resp_type);
-
-	if (opc == MMC_CMD_STOP_TRANSMISSION) {
-		/* SDHI sends the STOP command automatically by STOP reg */
-		lowrisc_writew(host, SDHI_INFO1_MASK, ~INFO1M_ACCESS_END &
-			       lowrisc_readw(host, SDHI_INFO1_MASK));
-
-		time = lowrisc_wait_interrupt_flag(host);
-		if (time == 0 || host->sd_error != 0)
-			return lowrisc_error_manage(host);
-
-		lowrisc_get_response(host, cmd);
-		return 0;
-	}
-
-	if (data) {
-		if ((opc == MMC_CMD_READ_MULTIPLE_BLOCK) ||
-		    opc == MMC_CMD_WRITE_MULTIPLE_BLOCK) {
-			lowrisc_writew(host, SDHI_STOP, STOP_SEC_ENABLE);
-			lowrisc_writew(host, SDHI_SECCNT, data->blocks);
-		}
-		lowrisc_writew(host, SDHI_SIZE, data->blocksize);
-	}
-
-	shcmd = lowrisc_set_cmd(host, data, opc);
-
-	/*
-	 *  U-Boot cannot use interrupt.
-	 *  So this flag may not be clear by timing
-	 */
-	lowrisc_writew(host, SDHI_INFO1, ~INFO1_RESP_END);
-
-	lowrisc_writew(host, SDHI_INFO1_MASK,
-		       INFO1M_RESP_END | lowrisc_readw(host, SDHI_INFO1_MASK));
-	lowrisc_writew(host, SDHI_ARG0,
-		       (unsigned short)(cmd->cmdarg & ARG0_MASK));
-	lowrisc_writew(host, SDHI_ARG1,
-		       (unsigned short)((cmd->cmdarg >> 16) & ARG1_MASK));
-
-	timeout = 100000;
-	/* Waiting for SD Bus busy to be cleared */
-	while (timeout--) {
-		if ((lowrisc_readw(host, SDHI_INFO2) & 0x2000))
-			break;
-	}
-
-	host->wait_int = 0;
-	lowrisc_writew(host, SDHI_INFO1_MASK,
-		       ~INFO1M_RESP_END & lowrisc_readw(host, SDHI_INFO1_MASK));
-	lowrisc_writew(host, SDHI_INFO2_MASK,
-		       ~(INFO2M_CMD_ERROR | INFO2M_CRC_ERROR |
-		       INFO2M_END_ERROR | INFO2M_TIMEOUT |
-		       INFO2M_RESP_TIMEOUT | INFO2M_ILA) &
-		       lowrisc_readw(host, SDHI_INFO2_MASK));
-
-	lowrisc_writew(host, SDHI_CMD, (unsigned short)(shcmd & CMD_MASK));
-	time = lowrisc_wait_interrupt_flag(host);
-	if (!time) {
-		host->app_cmd = 0;
-		return lowrisc_error_manage(host);
-	}
-
-	if (host->sd_error) {
-		switch (cmd->cmdidx) {
-		case MMC_CMD_ALL_SEND_CID:
-		case MMC_CMD_SELECT_CARD:
-		case SD_CMD_SEND_IF_COND:
-		case MMC_CMD_APP_CMD:
-			ret = -ETIMEDOUT;
-			break;
-		default:
-			debug(DRIVER_NAME": Cmd(d'%d) err\n", opc);
-			debug(DRIVER_NAME": cmdidx = %d\n", cmd->cmdidx);
-			ret = lowrisc_error_manage(host);
-			break;
-		}
-		host->sd_error = 0;
-		host->wait_int = 0;
-		host->app_cmd = 0;
-		return ret;
-	}
-
-	if (lowrisc_readw(host, SDHI_INFO1) & INFO1_RESP_END) {
-		host->app_cmd = 0;
-		return -EINVAL;
-	}
-
-	if (host->wait_int) {
-		lowrisc_get_response(host, cmd);
-		host->wait_int = 0;
-	}
+        host->cmdidx = opc;
+        
+        memset(cmd->response, 0, sizeof(cmd->response));
+        
+	LOGV(("opc = %d, arg = %x, resp_type = %x\n",
+	      opc, cmd->cmdarg, cmd->resp_type));
 
 	if (data)
-		ret = lowrisc_data_trans(host, data, opc);
+		lowrisc_sd_start_data(host, data);
+        
+	lowrisc_sd_set_led(host, 1);
 
-	debug("ret = %d, resp = %08x, %08x, %08x, %08x\n",
-	      ret, cmd->response[0], cmd->response[1],
-	      cmd->response[2], cmd->response[3]);
+        lowrisc_sd_start_cmd(host, cmd);
+
+        while (host->int_en)
+          lowrisc_wait_interrupt_flag(host);
+
+        switch(opc)
+          {
+          case 0:
+          case 41:
+          case 55:
+            LOGV(("opc = %d, arg = %x, resp_type = %x, ",
+	      opc, cmd->cmdarg, cmd->resp_type));
+            LOGV(("resp = %08x, %08x, %08x, %08x\n",
+                  cmd->response[0], cmd->response[1],
+                  cmd->response[2], cmd->response[3]));
+            break;
+          default:
+            LOG(("opc = %d, arg = %x, resp_type = %x, ",
+	      opc, cmd->cmdarg, cmd->resp_type));
+            LOG(("resp = %08x, %08x, %08x, %08x\n",
+                  cmd->response[0], cmd->response[1],
+                  cmd->response[2], cmd->response[3]));
+            break;
+          }
 	return ret;
 }
 
@@ -1235,22 +734,12 @@ static int lowrisc_set_ios_common(struct lowrisc_sd_host *host, struct mmc *mmc)
 {
 	int ret;
 
-	ret = lowrisc_clock_control(host, mmc->clock);
-	if (ret)
-		return -EINVAL;
-
 	if (mmc->bus_width == 8)
-		lowrisc_writew(host, SDHI_OPTION,
-			       OPT_BUS_WIDTH_8 | (~OPT_BUS_WIDTH_M &
-			       lowrisc_readw(host, SDHI_OPTION)));
+          return -EIO;
 	else if (mmc->bus_width == 4)
-		lowrisc_writew(host, SDHI_OPTION,
-			       OPT_BUS_WIDTH_4 | (~OPT_BUS_WIDTH_M &
-			       lowrisc_readw(host, SDHI_OPTION)));
+          host->width_setting = 0x20;
 	else
-		lowrisc_writew(host, SDHI_OPTION,
-			       OPT_BUS_WIDTH_1 | (~OPT_BUS_WIDTH_M &
-			       lowrisc_readw(host, SDHI_OPTION)));
+          host->width_setting = 0;
 
 	debug("clock = %d, buswidth = %d\n", mmc->clock, mmc->bus_width);
 
@@ -1260,12 +749,6 @@ static int lowrisc_set_ios_common(struct lowrisc_sd_host *host, struct mmc *mmc)
 static int lowrisc_initialize_common(struct lowrisc_sd_host *host)
 {
 	int ret = lowrisc_sync_reset(host);
-
-	lowrisc_writew(host, SDHI_PORTSEL, USE_1PORT);
-
-	lowrisc_writew(host, SDHI_INFO1_MASK, INFO1M_RESP_END |
-		       INFO1M_ACCESS_END | INFO1M_CARD_RE |
-		       INFO1M_DATA3_CARD_RE | INFO1M_DATA3_CARD_IN);
 
 	return ret;
 }
@@ -1301,10 +784,10 @@ static const struct mmc_ops lowrisc_ops = {
 static struct mmc_config lowrisc_cfg = {
 	.name           = DRIVER_NAME,
 	.ops            = &lowrisc_ops,
-	.f_min          = CLKDEV_INIT,
-	.f_max          = CLKDEV_HS_DATA,
+	.f_min          = 5000000,
+	.f_max          = 5000000,
 	.voltages       = MMC_VDD_32_33 | MMC_VDD_33_34,
-	.host_caps      = MMC_MODE_4BIT | MMC_MODE_HS,
+	.host_caps      = MMC_MODE_4BIT,
 	.part_type      = PART_TYPE_DOS,
 	.b_max          = CONFIG_SYS_MMC_MAX_BLK_COUNT,
 };
