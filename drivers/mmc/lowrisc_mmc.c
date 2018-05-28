@@ -18,8 +18,7 @@
 #include <linux/compat.h>
 #include <linux/io.h>
 #include <linux/sizes.h>
-#include <asm/arch/rmobile.h>
-#include <asm/arch/lowrisc.h>
+// #include <asm/arch/lowrisc.h>
 #include <clk.h>
 
 #define DRIVER_NAME "sh-sdhi"
