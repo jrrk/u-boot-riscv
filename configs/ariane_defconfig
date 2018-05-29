@@ -25,6 +25,7 @@ CONFIG_SYS_TEXT_BASE=0x80000000
 CONFIG_SYS_MALLOC_F_LEN=0x400
 CONFIG_IDENT_STRING=""
 CONFIG_64BIT=y
+CONFIG_DEFAULT_DEVICE_TREE=""
 # CONFIG_DEBUG_UART is not set
 # CONFIG_AHCI is not set
 
@@ -345,7 +346,7 @@ CONFIG_CMD_CACHE=y
 # CONFIG_CMD_BTRFS is not set
 # CONFIG_CMD_EXT2 is not set
 # CONFIG_CMD_EXT4 is not set
-# CONFIG_CMD_FAT is not set
+CONFIG_CMD_FAT=y
 # CONFIG_CMD_FS_GENERIC is not set
 # CONFIG_CMD_FS_UUID is not set
 # CONFIG_CMD_JFFS2 is not set
@@ -375,12 +376,17 @@ CONFIG_DOS_PARTITION=y
 # CONFIG_EFI_PARTITION is not set
 # CONFIG_PARTITION_UUIDS is not set
 CONFIG_SUPPORT_OF_CONTROL=y
+CONFIG_DTC=y
 
 #
 # Device Tree Control
 #
-# CONFIG_OF_CONTROL is not set
+CONFIG_OF_CONTROL=y
 # CONFIG_OF_BOARD_FIXUP is not set
+# CONFIG_OF_LIVE is not set
+# CONFIG_OF_SEPARATE is not set
+CONFIG_OF_EMBED=y
+# CONFIG_OF_BOARD is not set
 # CONFIG_MULTI_DTB_FIT is not set
 CONFIG_MKIMAGE_DTC_PATH="dtc"
 
@@ -427,6 +433,8 @@ CONFIG_DM_SEQ_ALIAS=y
 # CONFIG_SPL_DM_SEQ_ALIAS is not set
 # CONFIG_REGMAP is not set
 # CONFIG_DEVRES is not set
+# CONFIG_SIMPLE_BUS is not set
+# CONFIG_OF_TRANSLATE is not set
 CONFIG_DM_DEV_READ_INLINE=y
 # CONFIG_ADC is not set
 # CONFIG_ADC_EXYNOS is not set
@@ -520,6 +528,7 @@ CONFIG_CLK=y
 #
 # Mailbox Controller Support
 #
+# CONFIG_DM_MAILBOX is not set
 
 #
 # Memory Controller drivers
@@ -606,6 +615,7 @@ CONFIG_MMC_LOWRISC=y
 #
 # Power Domain Support
 #
+# CONFIG_POWER_DOMAIN is not set
 # CONFIG_DM_PMIC is not set
 # CONFIG_PMIC_AS3722 is not set
 # CONFIG_POWER_MC34VR500 is not set
@@ -621,6 +631,7 @@ CONFIG_MMC_LOWRISC=y
 #
 # Reset Controller Support
 #
+# CONFIG_DM_RESET is not set
 
 #
 # Real Time Clock
@@ -707,6 +718,7 @@ CONFIG_CONS_INDEX=1
 # CONFIG_VIDEO_LCD_SSD2828 is not set
 # CONFIG_VIDEO_MVEBU is not set
 # CONFIG_DISPLAY is not set
+# CONFIG_VIDEO_TEGRA20 is not set
 # CONFIG_VIDEO_BRIDGE is not set
 # CONFIG_VIDEO is not set
 # CONFIG_LCD is not set

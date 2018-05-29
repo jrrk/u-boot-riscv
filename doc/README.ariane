@@ -1,0 +1,5 @@
+mmc info
+fatinfo mmc 0
+fatls mmc 0
+fatload mmc 0 80200000 test.txt
+md 80200000

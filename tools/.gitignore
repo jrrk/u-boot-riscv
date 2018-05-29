@@ -29,3 +29,4 @@
 /sunxi-spl-image-builder
 /ubsha1
 /xway-swap-bytes
+prelink-riscv
