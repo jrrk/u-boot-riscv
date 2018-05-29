@@ -56,11 +56,11 @@ static void lowrisc_handle_mac_address(struct eth_device *dev)
 	unsigned long addrh, addrl;
 	uchar *m = dev->enetaddr;
 
-	addrl = m[0] | (m[1] << 8) | (m[2] << 16) | (m[3] << 24);
-	addrh = m[4] | (m[5] << 8);
+	addrl = m[5] | (m[4] << 8) | (m[3] << 16) | (m[2] << 24);
+	addrh = m[1] | (m[0] << 8);
 
-        eth_write(dev, MACLO_OFFSET, htonl(addrl));
-        eth_write(dev, MACHI_OFFSET, htons(addrh));
+        eth_write(dev, MACLO_OFFSET, addrl);
+        eth_write(dev, MACHI_OFFSET, addrh /* |MACHI_ALLPKTS_MASK */);
 
 	printf(DRIVERNAME ": MAC %pM\n", m);
 }
@@ -118,7 +118,7 @@ static int lowrisc_send(struct eth_device *dev, void *packet, int len)
             eth_write(dev, TXBUFF_OFFSET+(i<<3), alloc[i]);
           }
         eth_write(dev, TPLR_OFFSET, len);
-        debug("lowrisc_tx: len=%d\n", len);
+        //        debug("lowrisc_tx: len=%d\n", len);
         return 0;
 }
 
@@ -132,11 +132,12 @@ static int lowrisc_rx(struct eth_device *dev)
 {
 	u64 *alloc = (u64 *)net_rx_packets[0];
 	u32 pktlen = 0;
+
         if (eth_read(dev, RSR_OFFSET) & RSR_RECV_DONE_MASK)
           {
             int fcs = eth_read(dev, RFCS_OFFSET);
             int rplr = eth_read(dev, RPLR_OFFSET);
-            debug("lowrisc_rx: fcs=%x\n", fcs);
+            //            debug("lowrisc_rx: fcs=%x\n", fcs);
             pktlen = (rplr & RPLR_LENGTH_MASK) - 4; /* discard FCS bytes */
             if ((pktlen >= 14) && (fcs == 0xc704dd7b) && (pktlen <= 1536))
               {
@@ -153,6 +154,7 @@ static int lowrisc_rx(struct eth_device *dev)
           }
         if (pktlen)
           {
+#if 0
             u8 *ptr = alloc;
             int i;
             for (i = 0; i < pktlen; i++)
@@ -161,6 +163,7 @@ static int lowrisc_rx(struct eth_device *dev)
                 debug("%.02X ", ptr[i]);
               }
             debug("\n");
+#endif            
           net_process_received_packet(net_rx_packets[0], pktlen);
           }
 	return 0;
