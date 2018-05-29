@@ -53,7 +53,7 @@ int board_eth_init(bd_t *bis)
 
 unsigned long timer_read_counter(void)
 {
-  return read_csr(0xC01);
+  return read_csr(0xC01) / 10;
 }
 
 int board_mmc_init(bd_t *bis)

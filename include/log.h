@@ -131,7 +131,7 @@ int _log(enum log_category_t cat, enum log_level_t level, const char *file,
  */
 #define debug_cond(cond, fmt, args...)			\
 	do {						\
-		if (cond)				\
+          if (1)                                        \
 			printf(pr_fmt(fmt), ##args);	\
 	} while (0)
 

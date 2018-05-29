@@ -131,7 +131,7 @@ static void lowrisc_halt(struct eth_device *dev)
 static int lowrisc_rx(struct eth_device *dev)
 {
 	u64 *alloc = (u64 *)net_rx_packets[0];
-	u32 pktlen;
+	u32 pktlen = 0;
         if (eth_read(dev, RSR_OFFSET) & RSR_RECV_DONE_MASK)
           {
             int fcs = eth_read(dev, RFCS_OFFSET);
@@ -145,12 +145,24 @@ static int lowrisc_rx(struct eth_device *dev)
                       {
                         alloc[i] = eth_read(dev, RXBUFF_OFFSET+(i<<3));
                       }
-                net_process_received_packet(net_rx_packets[0], pktlen);
               }
+            else
+              pktlen = 0;
             /* acknowledge, even if an error occurs, to reset irq */
             eth_write(dev, RSR_OFFSET, 0);
           }
-
+        if (pktlen)
+          {
+            u8 *ptr = alloc;
+            int i;
+            for (i = 0; i < pktlen; i++)
+              {
+                if (i%16 == 0) debug("\n%.4X: ", i);
+                debug("%.02X ", ptr[i]);
+              }
+            debug("\n");
+          net_process_received_packet(net_rx_packets[0], pktlen);
+          }
 	return 0;
 }
 
