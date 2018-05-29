@@ -375,12 +375,12 @@ static void lowrisc_sd_start_cmd(struct lowrisc_sd_host *host, struct mmc_cmd *c
     if (data->flags & MMC_DATA_READ)
       {
       setting |= 0x10;
-      LOG(("data_read, blksz=%d\n", data->blocksize));
+      LOGV(("data_read, blksz=%d\n", data->blocksize));
       }
     else
       {
       setting |= 0x8;
-      LOG(("data_write, blksz=%d\n", data->blocksize));
+      LOGV(("data_write, blksz=%d\n", data->blocksize));
       }
   }
 
@@ -712,9 +712,9 @@ static int lowrisc_start_cmd(struct lowrisc_sd_host *host,
                   cmd->response[2], cmd->response[3]));
             break;
           default:
-            LOG(("opc = %d, arg = %x, resp_type = %x, ",
+            LOGV(("opc = %d, arg = %x, resp_type = %x, ",
 	      opc, cmd->cmdarg, cmd->resp_type));
-            LOG(("resp = %08x, %08x, %08x, %08x\n",
+            LOGV(("resp = %08x, %08x, %08x, %08x\n",
                   cmd->response[0], cmd->response[1],
                   cmd->response[2], cmd->response[3]));
             break;
@@ -741,7 +741,7 @@ static int lowrisc_set_ios_common(struct lowrisc_sd_host *host, struct mmc *mmc)
 	else
           host->width_setting = 0;
 
-	debug("clock = %d, buswidth = %d\n", mmc->clock, mmc->bus_width);
+	LOGV(("clock = %d, buswidth = %d\n", mmc->clock, mmc->bus_width));
 
 	return 0;
 }

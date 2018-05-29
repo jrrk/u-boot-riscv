@@ -23,6 +23,7 @@ unsigned long get_tbclk (void)
 
 int board_init(void)
 {
+  dcache_disable();
   return 0;
 }
 
