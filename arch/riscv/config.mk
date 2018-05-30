@@ -30,7 +30,7 @@ ifdef CONFIG_64BIT
 PLATFORM_LDFLAGS	+= -m $(64bit-emul)
 endif
 
-CONFIG_STANDALONE_LOAD_ADDR = 0x00000000 \
+CONFIG_STANDALONE_LOAD_ADDR = 0x80200000 \
 			      -T $(srctree)/examples/standalone/riscv.lds
 
 PLATFORM_CPPFLAGS	+= -ffixed-gp -fpic
