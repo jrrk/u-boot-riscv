@@ -678,7 +678,7 @@ void mem_malloc_init(ulong start, ulong size)
 /* variables holding tunable values */
 
 static unsigned long trim_threshold   = DEFAULT_TRIM_THRESHOLD;
-static unsigned long top_pad          = DEFAULT_TOP_PAD;
+static const unsigned long top_pad          = DEFAULT_TOP_PAD;
 static unsigned int  n_mmaps_max      = DEFAULT_MMAP_MAX;
 static unsigned long mmap_threshold   = DEFAULT_MMAP_THRESHOLD;
 
@@ -2361,8 +2361,10 @@ int mALLOPt(param_number, value) int param_number; int value;
   {
     case M_TRIM_THRESHOLD:
       trim_threshold = value; return 1;
+#if 0
     case M_TOP_PAD:
       top_pad = value; return 1;
+#endif      
     case M_MMAP_THRESHOLD:
       mmap_threshold = value; return 1;
     case M_MMAP_MAX:

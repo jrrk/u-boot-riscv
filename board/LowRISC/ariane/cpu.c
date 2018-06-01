@@ -48,15 +48,19 @@ int fake_jump_to_copy(void)
 int board_eth_init(bd_t *bis)
 {
   env_set("ethaddr", NULL);
-  return lowrisc_initialize(0, 0x41020000);
+  return lowrisc_initialize(0, 0x40020000);
 }
 
 unsigned long timer_read_counter(void)
 {
+#ifdef ARIANE
   return read_csr(0xC01) / 10;
+#else  
+  return read_csr(0xB00) / 10;
+#endif  
 }
 
 int board_mmc_init(bd_t *bis)
 {
-        return lowrisc_init(0x41010000, 0, SH_SDHI_QUIRK_64BIT_BUF);
+        return lowrisc_init(0x40010000, 0, SH_SDHI_QUIRK_64BIT_BUF);
 }
