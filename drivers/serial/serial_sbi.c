@@ -95,6 +95,6 @@ void early_uart_init(void)
   extern char __bss_start[], __bss_end[];
   size_t bsslen = __bss_end - __bss_start;
   memset(__bss_start, 0, bsslen);  
-  uart_base[0x400] = 54; // was 217;
+  uart_base[0x400] = 108; // was 217;
   early_puts("\nhello\n");
 }

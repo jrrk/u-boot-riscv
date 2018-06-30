@@ -52,7 +52,12 @@ handle_reset:
 	li  t0, -16
 	li  t1, CONFIG_SYS_INIT_SP_ADDR
 	and sp, t1, t0	/* force 16 byte alignment */
-
+	la  t0, __bss_start
+	la  t1, __bss_end
+1:	sw  zero, (t0)
+	addi t0, t0, 4
+	blt t0, t1, 1b
+	
         jal     early_uart_init
 	mv	a0, sp
 	jal	board_init_f_alloc_reserve

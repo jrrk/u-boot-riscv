@@ -43,12 +43,14 @@ struct lowrisc_sd_host {
 void sd_align(struct lowrisc_sd_host *host, int d_align)
 {
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
   sd_base[align_reg] = d_align;
 }
 
 void sd_clk_div(struct lowrisc_sd_host *host, int clk_div)
 {
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
   /* This section is incomplete */
   sd_base[clk_din_reg] = clk_div;
 }
@@ -56,54 +58,63 @@ void sd_clk_div(struct lowrisc_sd_host *host, int clk_div)
 void sd_arg(struct lowrisc_sd_host *host, uint32_t arg)
 {
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
   sd_base[arg_reg] = arg;
 }
 
 void sd_cmd(struct lowrisc_sd_host *host, uint32_t cmd)
 {
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
   sd_base[cmd_reg] = cmd;
 }
 
 void sd_setting(struct lowrisc_sd_host *host, int setting)
 {
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
   sd_base[setting_reg] = setting;
 }
 
 void sd_cmd_start(struct lowrisc_sd_host *host, int sd_cmd)
 {
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
   sd_base[start_reg] = sd_cmd;
 }
 
 void sd_reset(struct lowrisc_sd_host *host, int sd_rst, int clk_rst, int data_rst, int cmd_rst)
 {
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
   sd_base[reset_reg] = ((sd_rst&1) << 3)|((clk_rst&1) << 2)|((data_rst&1) << 1)|((cmd_rst&1) << 0);
 }
 
 void sd_blkcnt(struct lowrisc_sd_host *host, int d_blkcnt)
 {
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
   sd_base[blkcnt_reg] = d_blkcnt&0xFFFF;
 }
 
 void sd_blksize(struct lowrisc_sd_host *host, int d_blksize)
 {
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
   sd_base[blksiz_reg] = d_blksize&0xFFF;
 }
 
 void sd_timeout(struct lowrisc_sd_host *host, int d_timeout)
 {
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
   sd_base[timeout_reg] = d_timeout;
 }
 
 void sd_irq_en(struct lowrisc_sd_host *host, int mask)
 {
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
   sd_base[irq_en_reg] = mask;
   host->int_en = mask;
 }
@@ -121,6 +132,7 @@ static void *mmc_priv(struct mmc *mmc)
 static void lowrisc_sd_set_led(struct lowrisc_sd_host *host, unsigned char state)
 {
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
   sd_base[led_reg] = state;
 }
 
@@ -140,6 +152,7 @@ static void lowrisc_sd_cmd_irq(struct lowrisc_sd_host *host)
 {
 	struct mmc_cmd *cmd = host->cmd;
         volatile uint64_t *sd_base = host->ioaddr;
+        assert(sd_base == sd_base_addr);
 
 	LOGV (("lowrisc_sd_cmd_irq\n"));
 	
@@ -183,12 +196,10 @@ static void lowrisc_sd_data_end_irq(struct lowrisc_sd_host *host)
 	struct mmc_data *data = host->data;
         volatile uint64_t *sd_base = host->ioaddr;
 	unsigned long flags;
-	size_t blksize, len, chunk;
-	u32 uninitialized_var(scratch);
+	size_t blksize;
 	u8 *buf;
-	int i = 0;
-	u64 scratch64;
-        
+        assert(sd_base == sd_base_addr);
+       
 	LOGV (("lowrisc_sd_data_end_irq\n"));
 
 	host->data = NULL;
@@ -200,37 +211,18 @@ static void lowrisc_sd_data_end_irq(struct lowrisc_sd_host *host)
 
         if (data->flags & MMC_DATA_READ)
 	  {
-        
+            u8 *buf = data->dest;
+            sd_base += 0x1000;
 	    blksize = data->blocksize;
-	    chunk = 0;
-
-	    while (blksize) {
-	      int idx = 0;	  
-	      len = blksize;
-	  
-	      blksize -= len;
-
-              LOGV(("host->data->dest=%p\n", data->dest));
-	      buf = data->dest;
-	  
-	      while (len) {
-		if (chunk == 0) {
-                  scratch64 = sd_base[0x1000 + i++];
-                  LOGV(("sd_data(%d) = 0x%.016llX\n", host->cmdidx, scratch64));
-		  scratch = __be32_to_cpu((u32)scratch64);
-		  chunk = 8;
-                }
-		else if (chunk == 4) {
-		  scratch = __be32_to_cpu(scratch64>>32);                  
-		}
-		
-		buf[idx] = scratch & 0xFF;	    
-		idx++;
-		scratch >>= 8;
-		chunk--;
-		len--;
+            	  
+	    while (blksize)
+	      {
+                u64 scratch64 = *sd_base++;
+		memcpy(buf, &scratch64, sizeof(u64));
+		buf+=8;
+		blksize-=8;
 	      }
-	    }
+	    
 	  }
 
 	LOGV (("Completed data request xfr=%d\n", data->blocks));
@@ -246,6 +238,7 @@ static irqreturn_t lowrisc_sd_irq(int irq, void *dev_id)
         volatile uint64_t *sd_base = host->ioaddr;
 	u32 int_reg, int_status;
 	int error = 0, ret = IRQ_HANDLED;
+        assert(sd_base == sd_base_addr);
 
 	int_status = sd_base[irq_stat_resp];
 	int_reg = int_status & host->int_en;
@@ -332,6 +325,7 @@ static void lowrisc_sd_start_cmd(struct lowrisc_sd_host *host, struct mmc_cmd *c
   int timeout = 1000000;
   struct mmc_data *data = host->data;
   volatile uint64_t *sd_base = host->ioaddr;
+  assert(sd_base == sd_base_addr);
 
   LOGV (("Command opcode: %d\n", cmd->cmdidx));
 /*
@@ -684,6 +678,7 @@ static int lowrisc_start_cmd(struct lowrisc_sd_host *host,
 	int ret = 0;
 	unsigned long timeout;
         host->cmdidx = opc;
+        host->data = data;
         
         memset(cmd->response, 0, sizeof(cmd->response));
         
@@ -806,6 +801,7 @@ int lowrisc_init(unsigned long addr, int ch, unsigned long quirks)
 		return -ENOMEM;
 
 	mmc = mmc_create(&lowrisc_cfg, host);
+        printf("mmc created at %x, host = %x\n", mmc, host);
 	if (!mmc) {
 		ret = -1;
 		goto error;
