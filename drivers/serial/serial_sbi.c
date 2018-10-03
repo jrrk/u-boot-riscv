@@ -8,7 +8,7 @@
 #include <dm.h>
 #include <serial.h>
 
-volatile uint64_t *const uart_base = (uint64_t *)0x41004000;
+volatile uint64_t *const uart_base = (uint64_t *)0x40034000;
 
 int sbi_serial_init(void)
 {
@@ -92,6 +92,6 @@ void early_puts(const char *msg)
 
 void early_uart_init(void)
 {
-  uart_base[0x400] = 54; // was 217;
+  uart_base[0x400] = 108;
   early_puts("\nhello\n");
 }

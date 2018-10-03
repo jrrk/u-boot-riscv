@@ -26,24 +26,16 @@ void flush_cache(unsigned long addr, unsigned long size)
 void icache_enable(void)
 {
   debug("icache_enable();\n");
-  asm volatile ("fence.i");
-  write_csr(0x701, 0x1);
-  asm volatile ("fence.i");
-  debug("icache enabled\n");
 }
 
 void icache_disable(void)
 {
   debug("icache_disable();\n");
-  asm volatile ("fence.i");
-  write_csr(0x700, 0x0);
-  asm volatile ("fence.i");
-  debug("icache disabled\n");
 }
 
 int icache_status(void)
 {
-  uint64_t stat = read_csr(0x700);
+  uint64_t stat = 0;
   debug("icache_status() => %llx\n", stat);
   return stat;
 }
@@ -51,26 +43,16 @@ int icache_status(void)
 void dcache_enable(void)
 {
   debug("dcache_enable();\n");
-  asm volatile ("fence");
-  write_csr(0x701, 0x0);
-  write_csr(0x702, 0x80000000ULL);
-  write_csr(0x701, 0x1);
-  debug("dcache enabled\n");
 }
 
 void dcache_disable(void)
 {
   debug("dcache_disable();\n");
-  asm volatile ("fence");
-  write_csr(0x701, 0x0);
-  write_csr(0x702, 0xFFFFF000ULL);
-  write_csr(0x701, 0x1);
-  debug("dcache disabled\n");
 }
 
 int dcache_status(void)
 {
-  uint64_t stat = read_csr(0x702);
+  uint64_t stat = 0;
   debug("dcache_status() => %llx\n", stat);
-  return stat < 0xFFFFF000ULL;
+  return 0;
 }

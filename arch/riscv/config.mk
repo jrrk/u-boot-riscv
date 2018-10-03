@@ -35,4 +35,4 @@ CONFIG_STANDALONE_LOAD_ADDR = 0x80200000 \
 
 PLATFORM_CPPFLAGS	+= -ffixed-gp -fpic
 PLATFORM_RELFLAGS += -fno-strict-aliasing -fno-common -gdwarf-2
-LDFLAGS_u-boot += --gc-sections -static -pie
+LDFLAGS_u-boot += --gc-sections -static # -pie
